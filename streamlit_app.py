@@ -806,7 +806,10 @@ def main() -> None:
             st.rerun()
 
     # Investor profile (optional)
-    with st.expander("👤 Investor Profile (optional)", expanded=False):
+    st.markdown("### 👤 Investor Profile (optional)")
+    show_profile = st.checkbox("Configure investor preferences", value=False)
+    
+    if show_profile:
         c1, c2 = st.columns(2)
         with c1:
             age = st.number_input("Age", 18, 100, 30)
@@ -814,6 +817,12 @@ def main() -> None:
         with c2:
             risk = st.selectbox("Risk Tolerance", ["Conservative", "Moderate", "Aggressive"], index=1)
             goal = st.text_input("Goal", placeholder="Retirement, House, etc.")
+    else:
+        # Default values when profile is hidden
+        age = 30
+        amount = 50_000
+        risk = "Moderate"
+        goal = ""
 
     if st.button("🚀 Analyze Selected Stocks", type="primary"):
         if not selected:
