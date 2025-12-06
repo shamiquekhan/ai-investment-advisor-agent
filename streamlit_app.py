@@ -528,21 +528,44 @@ if 'analyze' in st.session_state and st.session_state.analyze:
         demo_list = []
         for t in selected_stocks[:5]:
             demo_data = get_demo_stock(t)
-            demo_score = calculate_ai_score(demo_data)
+            demo_score = calculate_ai_score(demo_data, health_score=50, sentiment_score=0.0)
+            demo_rec = get_recommendation(demo_score, health_grade='C', sentiment_label='🟡 Neutral', risk_label='🟡 Moderate Risk')
             demo_list.append({
                 **demo_data,
                 'score': demo_score,
-                'recommendation': get_recommendation(demo_score),
+                'recommendation': demo_rec['recommendation'],
+                'confidence': demo_rec['confidence'],
+                'explanation': demo_rec['explanation'],
+                'health_score': 50,
+                'health_grade': 'C',
+                'sentiment_score': 0.0,
+                'sentiment_label': '🟡 Neutral',
+                'risk_label': '🟡 Moderate Risk',
+                'news_articles': []
             })
         successful_results = demo_list
         st.info("Showing sample data due to API rate limits (Yahoo 429). Try fewer tickers or wait a minute.")
 
-    # Guarantee score/recommendation exist for downstream UI even if data came from cache/fallback
+    # Guarantee all required fields exist for downstream UI
     for res in successful_results:
         if 'score' not in res:
-            res['score'] = calculate_ai_score(res)
-        if 'recommendation' not in res:
-            res['recommendation'] = get_recommendation(res['score'])
+            res['score'] = calculate_ai_score(res, health_score=res.get('health_score', 50), sentiment_score=res.get('sentiment_score', 0.0))
+        if 'recommendation' not in res or isinstance(res['recommendation'], dict):
+            rec_data = get_recommendation(res['score'], 
+                                         health_grade=res.get('health_grade', 'C'),
+                                         sentiment_label=res.get('sentiment_label', '🟡 Neutral'),
+                                         risk_label=res.get('risk_label', '🟡 Moderate Risk'))
+            res['recommendation'] = rec_data['recommendation']
+            res['confidence'] = rec_data.get('confidence', 'N/A')
+            res['explanation'] = rec_data.get('explanation', 'No analysis available')
+        
+        # Ensure all other fields exist
+        res.setdefault('health_grade', 'N/A')
+        res.setdefault('sentiment_label', '🟡 Neutral')
+        res.setdefault('risk_label', '🟡 Moderate Risk')
+        res.setdefault('news_articles', [])
+        res.setdefault('confidence', 'N/A')
+        res.setdefault('explanation', 'No analysis available')
     
     # Final safety: drop any results without a score (shouldn't happen now, but defensive)
     successful_results = [r for r in successful_results if 'score' in r]
@@ -615,33 +638,90 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     
     if successful_results:
         for result in successful_results:
-            with st.expander(f"📊 {result['ticker']} - {result['name']} | Score: {result['score']:.1f}/10"):
-                col1, col2, col3 = st.columns(3)
+            # Color coding based on score
+            if result['score'] >= 7.5:
+                card_color = "rgba(34, 197, 94, 0.1)"  # Green
+                border_color = "#22c55e"
+            elif result['score'] >= 5.5:
+                card_color = "rgba(251, 191, 36, 0.1)"  # Yellow
+                border_color = "#fbbf24"
+            else:
+                card_color = "rgba(239, 68, 68, 0.1)"  # Red
+                border_color = "#ef4444"
+            
+            with st.expander(f"📊 **{result['ticker']}** - {result['name']} | Score: **{result['score']:.1f}/10** {result['recommendation']}", expanded=False):
+                # Header with key metrics
+                st.markdown(f"""
+                <div style='background: {card_color}; border-left: 4px solid {border_color}; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;'>
+                    <h3 style='margin: 0 0 0.5rem 0; color: #000000;'>{result['ticker']} - {result['name']}</h3>
+                    <p style='margin: 0; color: #666666; font-size: 0.9rem;'><strong>Sector:</strong> {result.get('sector', 'Unknown')} | <strong>Market Cap:</strong> ${result.get('marketCap', 0):.1f}B</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Metrics in columns
+                col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
-                    st.metric("Price", f"${result['price']:.2f}", f"{result['change']:+.2f}%")
-                    st.metric("AI Score", f"{result['score']:.1f}/10", help="Composite score from fundamentals + health + sentiment")
+                    st.metric("💰 Price", f"${result['price']:.2f}", f"{result['change']:+.2f}%")
+                    st.caption(f"P/E Ratio: **{result.get('pe', 'N/A')}**")
                 
                 with col2:
-                    st.metric("Health Grade", result.get('health_grade', 'N/A'), help="Financial health based on fundamentals")
-                    st.metric("P/E Ratio", result.get('pe', 'N/A'))
+                    st.metric("🎯 AI Score", f"{result['score']:.1f}/10")
+                    st.caption("Composite analysis score")
                 
                 with col3:
-                    st.metric("Sentiment", result.get('sentiment_label', '🟡 Neutral'))
-                    st.metric("Risk", result.get('risk_label', '🟡 Moderate'))
+                    st.metric("🏥 Health Grade", result.get('health_grade', 'N/A'))
+                    st.caption(f"Health Score: **{result.get('health_score', 0):.0f}/100**")
                 
-                st.markdown(f"**Recommendation:** {result['recommendation']} ({result.get('confidence', 'N/A')} Confidence)")
-                st.markdown(f"**Analysis:** {result.get('explanation', 'No analysis available')}")
+                with col4:
+                    st.metric("📰 Sentiment", result.get('sentiment_label', '🟡 Neutral').replace('🟢 ', '').replace('🔴 ', '').replace('🟡 ', ''))
+                    st.caption(f"Risk: **{result.get('risk_label', '🟡 Moderate Risk')}**")
+                
+                # Technical indicators
+                st.markdown("#### 📈 Technical Indicators")
+                tech_col1, tech_col2, tech_col3 = st.columns(3)
+                with tech_col1:
+                    rsi = result.get('rsi', 50)
+                    rsi_status = "Oversold" if rsi < 30 else ("Overbought" if rsi > 70 else "Neutral")
+                    st.write(f"**RSI:** {rsi:.1f} ({rsi_status})")
+                with tech_col2:
+                    st.write(f"**Volume:** {result.get('volume', 0):,.0f}")
+                with tech_col3:
+                    st.write(f"**Dividend Yield:** {result.get('dividend', 0):.2f}%")
+                
+                # Recommendation
+                st.markdown("#### 🎯 Investment Recommendation")
+                st.markdown(f"""
+                <div style='background: rgba(0,0,0,0.03); padding: 1rem; border-radius: 4px; border-left: 3px solid {border_color};'>
+                    <p style='margin: 0 0 0.5rem 0; font-size: 1.1rem;'><strong>{result['recommendation']}</strong> (Confidence: {result.get('confidence', 'N/A')})</p>
+                    <p style='margin: 0; color: #666666;'>{result.get('explanation', 'No analysis available')}</p>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 # News section
                 articles = result.get('news_articles', [])
                 if articles:
-                    st.markdown("**📰 Recent News:**")
-                    for article in articles[:3]:
-                        sentiment_color = "🟢" if article['sentiment_score'] > 0.2 else ("🔴" if article['sentiment_score'] < -0.2 else "🟡")
-                        st.markdown(f"{sentiment_color} **[{article['title']}]({article['link']})** - {article['published']}")
+                    st.markdown("#### 📰 Recent News & Sentiment")
+                    for i, article in enumerate(articles[:5], 1):
+                        sentiment_score = article.get('sentiment_score', 0)
+                        if sentiment_score > 0.2:
+                            sentiment_icon = "🟢"
+                            sentiment_text = "Positive"
+                        elif sentiment_score < -0.2:
+                            sentiment_icon = "🔴"
+                            sentiment_text = "Negative"
+                        else:
+                            sentiment_icon = "🟡"
+                            sentiment_text = "Neutral"
+                        
+                        st.markdown(f"""
+                        <div style='padding: 0.75rem; margin: 0.5rem 0; background: rgba(0,0,0,0.02); border-radius: 4px;'>
+                            <p style='margin: 0 0 0.25rem 0;'>{sentiment_icon} <strong><a href='{article.get('link', '#')}' target='_blank' style='color: #000000; text-decoration: none;'>{article.get('title', 'No title')}</a></strong></p>
+                            <p style='margin: 0; font-size: 0.85rem; color: #666666;'>{sentiment_text} sentiment ({sentiment_score:+.2f}) • {article.get('published', 'Unknown date')}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
-                    st.info("No recent news available")
+                    st.info("📭 No recent news available for this stock")
     
     # === ANALYSIS TABLE ===
     st.markdown("---")
@@ -649,10 +729,18 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     
     if successful_results:
         df = pd.DataFrame(successful_results)
+        
+        # Select only columns that exist in the dataframe
+        display_columns = ['ticker', 'name', 'score', 'recommendation', 'price', 'change', 'rsi', 'pe']
+        
+        # Add optional columns if they exist
+        if 'health_grade' in df.columns:
+            display_columns.insert(3, 'health_grade')
+        if 'sentiment_label' in df.columns:
+            display_columns.append('sentiment_label')
 
         st.dataframe(
-            df[['ticker', 'name', 'score', 'health_grade', 'recommendation', 'price', 'change', 
-                'rsi', 'pe', 'sentiment_label']],
+            df[display_columns],
             use_container_width=True,
             column_config={
                 "score": st.column_config.NumberColumn("AI Score", format="%.1f", min_value=0, max_value=10),
