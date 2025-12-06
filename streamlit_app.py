@@ -513,7 +513,7 @@ if st.button("🚀 **ANALYZE SELECTED STOCKS**", type="primary", use_container_w
 if 'analyze' in st.session_state and st.session_state.analyze:
     selected_stocks = st.session_state.selected_stocks
     amount = st.session_state.get('amount', 50000)
-    risk = st.session_state.get('risk', 'Moderate')
+    risk_tolerance = st.session_state.get('risk', 'Moderate')
     
     st.success(f"✅ Analyzing **{len(selected_stocks)} stocks** live...")
     
@@ -576,8 +576,8 @@ if 'analyze' in st.session_state and st.session_state.analyze:
                 
                 # Calculate health score
                 health = calculate_health_score(data)
-                risk = calculate_volatility_risk(data)
-                health_data[ticker] = {'health': health, 'risk': risk}
+                volatility_risk = calculate_volatility_risk(data)
+                health_data[ticker] = {'health': health, 'risk': volatility_risk}
     
     for ticker, data in stock_data.items():
         # Get enhanced metrics
@@ -871,7 +871,7 @@ if 'analyze' in st.session_state and st.session_state.analyze:
             "Moderate": [25, 25, 20, 15, 15],
             "Aggressive": [30, 25, 20, 15, 10]
         }
-        weights = weight_configs.get(risk, [25, 25, 20, 15, 15])[:len(successful_results)]
+        weights = weight_configs.get(risk_tolerance, [25, 25, 20, 15, 15])[:len(successful_results)]
         
         portfolio_value = amount
         total_return = 0.0
@@ -1040,7 +1040,7 @@ if 'analyze' in st.session_state and st.session_state.analyze:
                 <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
                     <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>RISK PROFILE</p>
                     <p style='font-size: 1.5rem; font-family: "Noto Sans", sans-serif; font-weight: 600; margin: 0; color: #000000;'>
-                        {risk}
+                        {risk_tolerance}
                     </p>
                 </div>
                 <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
