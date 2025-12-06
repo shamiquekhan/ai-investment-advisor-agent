@@ -324,6 +324,8 @@ def render_css():
             border-radius: 2px;
             background: var(--neutral-1-10);
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-bottom: 1rem;
+            overflow: hidden;
         }
         
         .card:hover {
@@ -420,8 +422,16 @@ def render_css():
             border: 1px solid var(--neutral-1-200);
             border-top: 2px solid var(--accent-1-500);
             border-radius: 2px;
-            padding: 3rem;
-            margin-top: 4rem;
+            padding: 2rem;
+            margin-top: 3rem;
+            text-align: center;
+            clear: both;
+        }
+        
+        .footer p {
+            margin: 0 !important;
+            padding: 0 !important;
+            line-height: 1.6 !important;
         }
         
         h1, h2, h3, h4, h5, h6 {
@@ -430,12 +440,20 @@ def render_css():
             font-weight: 600 !important;
             letter-spacing: 0.08em !important;
             text-transform: uppercase !important;
+            margin-top: 2rem !important;
+            margin-bottom: 1rem !important;
+            line-height: 1.3 !important;
         }
         
         p, span, div, label {
             font-family: 'Ndot', sans-serif !important;
             font-size: 0.875rem !important;
             color: var(--neutral-1-600) !important;
+            line-height: 1.5 !important;
+        }
+        
+        p {
+            margin-bottom: 0.5rem !important;
         }
         
         hr {
@@ -503,14 +521,14 @@ def render_top_cards(successful: List[Dict[str, Any]]):
             st.markdown(
                 f"""
                 <div class='card'>
-                    <div style='display:flex;justify-content:space-between;align-items:center;'>
-                        <strong>{res.get('ticker','')} {source_icon}</strong>
-                        <span style='font-size:0.8rem;'>{rating}</span>
+                    <div style='display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;'>
+                        <strong style='font-size:1rem;'>{res.get('ticker','')} {source_icon}</strong>
+                        <span style='font-size:0.75rem;color:var(--accent-1-500);font-weight:600;'>{rating}</span>
                     </div>
-                    <p style='font-size:1.4rem;margin:0.4rem 0 0.2rem 0;'>{price_display}</p>
-                    <p style='margin:0;color:{'#16a34a' if res.get('change',0)>=0 else '#dc2626'}'>{change_display}</p>
-                    <p style='margin:0.4rem 0 0 0;color:#555;'>Score: {score:.1f}/10</p>
-                    <p style='margin:0;color:#777;font-size:0.7rem;'>Health: {res.get('health_grade','N/A')} • {source_tooltip}</p>
+                    <p style='font-size:1.5rem;margin:0.5rem 0;font-weight:600;line-height:1.2;'>{price_display}</p>
+                    <p style='margin:0.3rem 0;color:{'#16a34a' if res.get('change',0)>=0 else '#dc2626'};font-size:0.95rem;'>{change_display}</p>
+                    <p style='margin:0.5rem 0 0.3rem 0;color:#555;font-size:0.85rem;'>Score: {score:.1f}/10</p>
+                    <p style='margin:0;color:#777;font-size:0.75rem;line-height:1.3;'>Health: {res.get('health_grade','N/A')} • {source_tooltip}</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -597,7 +615,7 @@ def render_portfolio(successful: List[Dict[str, Any]], amount: float, risk: str)
         with col:
             st.markdown(
                 f"""
-                <div class='card' style='text-align:center;'>
+                <div class='card' style='text-align:center;padding:1.5rem;'>
                     <p style='font-size:1.6rem;margin:0;'>{res.get('ticker','')}</p>
                     <p style='margin:0.1rem 0;color:#666;'>{w}% allocation</p>
                     <p style='font-size:1.4rem;margin:0.4rem 0;'>${allocation:,.0f}</p>
