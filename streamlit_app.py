@@ -516,6 +516,49 @@ def render_css():
             border-left: 3px solid #2196F3 !important;
         }
         </style>
+        
+        <script>
+        // Remove keyboard_arrow_right text from expanders
+        function cleanExpanderText() {
+            const expanders = document.querySelectorAll('[data-testid="stExpander"] button[kind="header"]');
+            expanders.forEach(button => {
+                const walker = document.createTreeWalker(
+                    button,
+                    NodeFilter.SHOW_TEXT,
+                    null
+                );
+                
+                const nodesToRemove = [];
+                while(walker.nextNode()) {
+                    const node = walker.currentNode;
+                    if (node.nodeValue && node.nodeValue.includes('keyboard_arrow')) {
+                        nodesToRemove.push(node);
+                    }
+                }
+                
+                nodesToRemove.forEach(node => {
+                    node.nodeValue = '';
+                });
+            });
+        }
+        
+        // Run on load and observe for new content
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', cleanExpanderText);
+        } else {
+            cleanExpanderText();
+        }
+        
+        // Watch for Streamlit updates
+        const observer = new MutationObserver(cleanExpanderText);
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Also clean every 500ms as backup
+        setInterval(cleanExpanderText, 500);
+        </script>
         """,
         unsafe_allow_html=True,
     )
