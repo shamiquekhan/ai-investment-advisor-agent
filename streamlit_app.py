@@ -908,9 +908,7 @@ if 'analyze' in st.session_state and st.session_state.analyze:
         top3 = [r['ticker'] for r in successful_results[:3]]
         # Enhanced readable report with light theme
         st.markdown(f"""
-<div style='background: #FFFFFF;
-border: 2px solid #D71921; border-radius: 8px; padding: 3rem;
-box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
+<div style='background: #FFFFFF; border: 2px solid #D71921; border-radius: 8px; padding: 3rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
     <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
         <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
             📊 INVESTMENT ANALYSIS REPORT
@@ -919,7 +917,6 @@ box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-s
             Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
         </p>
     </div>
-    
     <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;'>
         <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
             <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>TOP HOLDINGS</p>
