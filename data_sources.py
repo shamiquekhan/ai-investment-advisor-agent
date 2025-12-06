@@ -1,6 +1,8 @@
-"""Data access helpers for stock advisor app."""
+"""Data access helpers for stock advisor app with parallel API requests."""
 
+import concurrent.futures
 import time
+from typing import List, Dict
 
 import pandas as pd
 import streamlit as st
@@ -70,6 +72,56 @@ def get_stock_data(ticker: str):
         "name": ticker,
         "error": "Throttled/Unavailable",
     }
+
+
+def get_stocks_parallel(tickers: List[str], max_workers: int = 10) -> List[Dict]:
+    """
+    Fetch stock data for multiple tickers in parallel using ThreadPoolExecutor.
+    
+    Args:
+        tickers: List of stock ticker symbols
+        max_workers: Maximum number of concurrent API requests (default: 10)
+    
+    Returns:
+        List of stock data dictionaries in the same order as input tickers
+    """
+    results = []
+    
+    # Use ThreadPoolExecutor for parallel API requests
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all fetch tasks
+        future_to_ticker = {
+            executor.submit(get_stock_data, ticker): ticker 
+            for ticker in tickers
+        }
+        
+        # Collect results as they complete
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            try:
+                data = future.result(timeout=30)  # 30 second timeout per request
+                results.append(data)
+            except concurrent.futures.TimeoutError:
+                ticker = future_to_ticker[future]
+                results.append({
+                    "success": False,
+                    "ticker": ticker,
+                    "name": ticker,
+                    "error": "Request timeout"
+                })
+            except Exception as exc:
+                ticker = future_to_ticker[future]
+                results.append({
+                    "success": False,
+                    "ticker": ticker,
+                    "name": ticker,
+                    "error": f"Error: {str(exc)}"
+                })
+    
+    # Sort results to match original ticker order
+    ticker_order = {ticker: i for i, ticker in enumerate(tickers)}
+    results.sort(key=lambda x: ticker_order.get(x["ticker"], 999))
+    
+    return results
 
 
 def get_demo_stock(ticker: str):

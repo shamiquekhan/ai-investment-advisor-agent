@@ -14,7 +14,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from cache_manager import clear_cache
-from data_sources import get_demo_stock, get_stock_data
+from data_sources import get_demo_stock, get_stock_data, get_stocks_parallel
 from scoring import calculate_ai_score, get_recommendation
 
 # Page config
@@ -71,24 +71,24 @@ st.markdown("""
 }
 
 .stApp {
-    background: #FFFFFF;
+    background: #F5F5F5;
     color: #000000;
     font-family: 'Ndot', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .main-header {
     font-family: 'Ndot', sans-serif;
-    font-size: 3.5rem !important;
+    font-size: 3rem !important;
     font-weight: 400 !important;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.15em;
     color: #000000;
     text-align: center;
     margin: 3rem 0 1rem 0;
     padding: 0;
-    text-transform: none;
-    line-height: 1.1;
-    background-image: radial-gradient(circle, #000000 60%, transparent 62%);
-    background-size: 6px 6px;
+    text-transform: uppercase;
+    line-height: 1.2;
+    background-image: radial-gradient(circle, #000000 55%, transparent 58%);
+    background-size: 5px 5px;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -102,13 +102,13 @@ st.markdown("""
 
 .subtitle {
     font-family: 'Ndot', sans-serif;
-    font-size: 0.875rem;
-    color: rgba(0, 0, 0, 0.6);
+    font-size: 0.75rem;
+    color: rgba(0, 0, 0, 0.5);
     text-align: center;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.1em;
     font-weight: 400;
     margin-bottom: 1rem;
-    text-transform: none;
+    text-transform: uppercase;
     animation: fadeIn 0.8s ease-out 0.2s both;
 }
 
@@ -144,8 +144,8 @@ st.markdown("""
 }
 
 .stock-selector {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.06);
     padding: 2rem;
     border-radius: 0;
     margin: 2rem 0;
@@ -198,16 +198,16 @@ st.markdown("""
 .stButton > button:active { transform: translateY(-1px) scale(0.99); }
 
 div[data-testid="stMetric"] {
-    background: rgba(0, 0, 0, 0.03);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 0;
     padding: 1.5rem !important;
     box-shadow: none;
 }
 
 div[data-testid="stMetric"]:hover {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.12);
+    background: #FFFFFF;
+    border-color: rgba(0, 0, 0, 0.1);
     transform: none;
 }
 
@@ -226,22 +226,22 @@ div[data-testid="stMetricDelta"] {
 }
 
 .metric-card {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 0;
     padding: 1.5rem;
     box-shadow: none;
 }
 
 .metric-card:hover { 
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.12);
+    background: #FFFFFF;
+    border-color: rgba(0, 0, 0, 0.1);
 }
 
 .stTextInput input, .stSelectbox select, .stMultiSelect {
-    background: rgba(0, 0, 0, 0.03) !important;
+    background: #FFFFFF !important;
     color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     font-size: 0.875rem !important;
@@ -250,35 +250,35 @@ div[data-testid="stMetricDelta"] {
 }
 
 .stTextInput input:focus, .stSelectbox select:focus, .stMultiSelect:focus-within {
-    border: 1px solid rgba(255, 0, 0, 0.5) !important;
+    border: 1px solid rgba(0, 0, 0, 0.2) !important;
     box-shadow: none !important;
     outline: none !important;
-    background: rgba(0, 0, 0, 0.05) !important;
+    background: #FFFFFF !important;
 }
 
 .stDataFrame {
-    background: rgba(0, 0, 0, 0.02) !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    background: #FFFFFF !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: hidden;
 }
 
 .streamlit-expanderHeader {
-    background: rgba(0, 0, 0, 0.02) !important;
+    background: #FFFFFF !important;
     color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
+    border: 1px solid rgba(0, 0, 0, 0.06) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     padding: 1rem 1.5rem !important;
 }
 
-.streamlit-expanderHeader:hover { border-color: rgba(255, 0, 0, 0.3) !important; }
+.streamlit-expanderHeader:hover { border-color: rgba(0, 0, 0, 0.15) !important; }
 
 .footer {
-    background: rgba(0, 0, 0, 0.02);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-top: 2px solid #FF0000;
+    background: #FFFFFF;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-top: 2px solid #000000;
     border-radius: 0;
     padding: 3rem;
     margin-top: 4rem;
@@ -317,9 +317,9 @@ hr { border: none; height: 1px; background: rgba(0, 0, 0, 0.08); margin: 3rem 0;
 .stSpinner > div { border-color: #FF0000 !important; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.05); border-radius: 0; }
-::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); border-radius: 0; border: 2px solid #FFFFFF; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.3); }
+::-webkit-scrollbar-track { background: #F5F5F5; border-radius: 0; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 0; border: 2px solid #F5F5F5; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -412,15 +412,15 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     
     st.success(f"✅ Analyzing **{len(selected_stocks)} stocks** live...")
     
-    # === DATA FETCHING ===
-    with st.spinner("📊 Fetching LIVE market data..."):
-        stock_data = {}
-        progress_bar = st.progress(0)
+    # === DATA FETCHING (PARALLEL) ===
+    with st.spinner(f"📊 Fetching LIVE market data for {len(selected_stocks)} stocks in parallel..."):
+        # Fetch all stocks in parallel using ThreadPoolExecutor
+        stock_data_list = get_stocks_parallel(selected_stocks, max_workers=10)
         
-        for i, ticker in enumerate(selected_stocks):
-            stock_data[ticker] = get_stock_data(ticker)
-            progress_bar.progress((i + 1) / len(selected_stocks))
-            time.sleep(0.05 + random.random() * 0.05)  # Gentle pacing with jitter to reduce 429s
+        # Convert list to dictionary for easier access
+        stock_data = {data['ticker']: data for data in stock_data_list}
+        
+        st.success(f"✅ Fetched {len(stock_data)} stocks in parallel!")
         
     
     # === ANALYSIS ===
