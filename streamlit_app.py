@@ -89,13 +89,20 @@ except Exception:  # pragma: no cover
         return {"score": 0.0, "label": "🟡 Neutral"}
 
 try:
-    from ml_models import check_ml_availability, preload_models
     # Check if ML should be disabled via environment variable
     import os
     DISABLE_ML = os.getenv("DISABLE_ML", "false").lower() == "true"
-    ML_AVAILABLE = not DISABLE_ML
-    if DISABLE_ML:
+    
+    if not DISABLE_ML:
+        from ml_models import check_ml_availability, preload_models
+        ML_AVAILABLE = True
+    else:
         print("⚠️ ML models disabled via DISABLE_ML environment variable")
+        ML_AVAILABLE = False
+        def check_ml_availability():
+            return {"transformers_installed": False}
+        def preload_models():
+            pass
 except Exception as e:  # pragma: no cover
     ML_AVAILABLE = False
     print(f"⚠️ ML models not available: {e}")

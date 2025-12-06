@@ -1,0 +1,6 @@
+# Optional ML dependencies for sentiment analysis
+# Install with: pip install -r requirements-ml.txt
+# These are not required for basic functionality
+transformers>=4.36.0
+torch>=2.0.0
+sentencepiece>=0.1.99
