@@ -3,6 +3,8 @@
 import concurrent.futures
 import random
 import time
+import warnings
+from threading import Lock
 from typing import List, Dict
 
 import pandas as pd
@@ -11,15 +13,21 @@ import yfinance as yf
 
 from cache_manager import get_cached_stock, set_cached_stock
 
+# Suppress ScriptRunContext warning from threading
+warnings.filterwarnings("ignore", message=".*missing ScriptRunContext.*")
 
 # Concurrency and throttling safeguards to reduce yfinance rate-limit errors
-MAX_WORKERS = 6
-BATCH_SIZE = 8
-BATCH_PAUSE_SECONDS = 0.8
-MAX_RETRIES = 4
-BACKOFF_BASE = 0.8
-BACKOFF_FACTOR = 1.6
-JITTER_MAX = 0.35
+MAX_WORKERS = 2  # Reduced from 6 to 2 to prevent 429 errors
+BATCH_SIZE = 4   # Reduced batch size
+BATCH_PAUSE_SECONDS = 2.0  # Increased delay between batches
+DELAY_BETWEEN_REQUESTS = 1.5  # Critical: delay between individual requests
+MAX_RETRIES = 3  # Reduced retries
+BACKOFF_BASE = 2.0  # Increased backoff
+BACKOFF_FACTOR = 2.0
+JITTER_MAX = 0.5
+
+# Thread-safe rate limiting
+_request_lock = Lock()
 
 
 @st.cache_data(ttl=180)
@@ -29,6 +37,10 @@ def get_stock_data(ticker: str):
     cached = get_cached_stock(ticker)
     if cached:
         return cached
+
+    # Thread-safe rate limiting
+    with _request_lock:
+        time.sleep(DELAY_BETWEEN_REQUESTS)
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -73,9 +85,9 @@ def get_stock_data(ticker: str):
                 time.sleep(delay)
                 continue
 
-            # For transient network issues, retry with a small pause
+            # For transient network issues, retry with a longer pause
             if attempt < MAX_RETRIES - 1:
-                time.sleep(0.4 * (attempt + 1))
+                time.sleep(1.0 * (attempt + 1))  # Increased from 0.4 to 1.0
                 continue
 
             # On final failure, return an error dict (don't cache failures)

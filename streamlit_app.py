@@ -55,13 +55,13 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-    --bg-main: #0A0A0A;
-    --bg-panel: #141414;
-    --text-primary: #FFFFFF;
-    --text-secondary: #B0B0B0;
+    --bg-main: #FFFFFF;
+    --bg-panel: #FAFAFA;
+    --text-primary: #000000;
+    --text-secondary: #666666;
     --accent-red: #D71921;
-    --border-color: rgba(255, 255, 255, 0.08);
-    --hover-bg: rgba(255, 255, 255, 0.03);
+    --border-color: rgba(0, 0, 0, 0.08);
+    --hover-bg: rgba(0, 0, 0, 0.02);
 }
 
 * {
@@ -69,8 +69,8 @@ st.markdown("""
 }
 
 .stApp {
-    background: linear-gradient(180deg, #0A0A0A 0%, #000000 100%);
-    color: #FFFFFF;
+    background: #FFFFFF;
+    color: #000000;
     font-family: 'Ndot', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
@@ -79,19 +79,18 @@ st.markdown("""
     font-size: 3.5rem !important;
     font-weight: 400 !important;
     letter-spacing: 0.18em;
-    color: #FFFFFF;
+    color: #000000;
     text-align: center;
     margin: 3rem 0 1.5rem 0;
     padding: 0;
     text-transform: uppercase;
     line-height: 1.2;
-    background-image: radial-gradient(circle, #FFFFFF 52%, transparent 55%);
+    background-image: radial-gradient(circle, #000000 52%, transparent 55%);
     background-size: 4.5px 4.5px;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: fadeInDown 0.6s ease-out;
-    filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
 }
 
 @keyframes fadeInDown {
@@ -102,7 +101,7 @@ st.markdown("""
 .subtitle {
     font-family: 'Ndot', sans-serif;
     font-size: 0.85rem;
-    color: #B0B0B0;
+    color: #666666;
     text-align: center;
     letter-spacing: 0.12em;
     font-weight: 400;
@@ -168,8 +167,8 @@ st.markdown("""
 }
 
 .stock-selector {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FAFAFA;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     padding: 2.5rem;
     border-radius: 0;
     margin: 2rem 0;
@@ -223,22 +222,22 @@ st.markdown("""
 .stButton > button:active { transform: translateY(-1px) scale(0.99); }
 
 div[data-testid="stMetric"] {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FAFAFA;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 0;
     padding: 1.5rem !important;
     box-shadow: none;
 }
 
 div[data-testid="stMetric"]:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: #F5F5F5;
+    border-color: rgba(0, 0, 0, 0.12);
     transform: none;
 }
 
 div[data-testid="stMetricValue"] {
     font-family: 'Ndot', sans-serif;
-    color: #FFFFFF !important;
+    color: #000000 !important;
     font-size: 2rem !important;
     font-weight: 400 !important;
     letter-spacing: 0;
@@ -251,22 +250,22 @@ div[data-testid="stMetricDelta"] {
 }
 
 .metric-card {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FAFAFA;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-radius: 0;
     padding: 1.5rem;
     box-shadow: none;
 }
 
 .metric-card:hover { 
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: #F5F5F5;
+    border-color: rgba(0, 0, 0, 0.12);
 }
 
 .stTextInput input, .stSelectbox select, .stMultiSelect {
-    background: rgba(255, 255, 255, 0.03) !important;
-    color: #FFFFFF !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #FFFFFF !important;
+    color: #000000 !important;
+    border: 1px solid rgba(0, 0, 0, 0.12) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     font-size: 0.875rem !important;
@@ -278,34 +277,34 @@ div[data-testid="stMetricDelta"] {
     border: 1px solid rgba(215, 25, 33, 0.5) !important;
     box-shadow: none !important;
     outline: none !important;
-    background: rgba(255, 255, 255, 0.05) !important;
+    background: #FFFFFF !important;
 }
 
 .stDataFrame {
-    background: rgba(255, 255, 255, 0.02) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #FAFAFA !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: hidden;
 }
 
 .streamlit-expanderHeader {
-    background: rgba(255, 255, 255, 0.02) !important;
-    color: #FFFFFF !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    background: #FAFAFA !important;
+    color: #000000 !important;
+    border: 1px solid rgba(0, 0, 0, 0.08) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     padding: 1rem 1.5rem !important;
 }
 
 .streamlit-expanderHeader:hover { 
-    background: rgba(255, 255, 255, 0.04) !important;
+    background: #F5F5F5 !important;
     border-color: rgba(215, 25, 33, 0.3) !important; 
 }
 
 .footer {
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FAFAFA;
+    border: 1px solid rgba(0, 0, 0, 0.08);
     border-top: 2px solid #D71921;
     border-radius: 0;
     padding: 3rem;
@@ -315,25 +314,25 @@ div[data-testid="stMetricDelta"] {
 
 .footer h3 {
     font-family: 'Ndot', sans-serif;
-    color: #FFFFFF;
+    color: #000000;
     letter-spacing: 0.08em;
 }
 
-h1, h2, h3, h4, h5, h6 { font-family: 'Ndot', sans-serif !important; color: #FFFFFF !important; font-weight: 400 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
+h1, h2, h3, h4, h5, h6 { font-family: 'Ndot', sans-serif !important; color: #000000 !important; font-weight: 400 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
 
-p, span, div, label { font-family: 'Ndot', sans-serif !important; font-size: 0.875rem !important; color: #B0B0B0 !important; }
+p, span, div, label { font-family: 'Ndot', sans-serif !important; font-size: 0.875rem !important; color: #666666 !important; }
 
-hr { border: none; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 3rem 0; }
+hr { border: none; height: 1px; background: rgba(0, 0, 0, 0.08); margin: 3rem 0; }
 
-.stCheckbox { color: #FFFFFF !important; }
-.stCheckbox > label { font-family: 'Ndot', sans-serif; font-size: 0.875rem; font-weight: 400; color: #B0B0B0 !important; }
+.stCheckbox { color: #000000 !important; }
+.stCheckbox > label { font-family: 'Ndot', sans-serif; font-size: 0.875rem; font-weight: 400; color: #666666 !important; }
 
 .stAlert { 
     background: rgba(215, 25, 33, 0.1) !important; 
     border-left: 3px solid #D71921 !important; 
     border-radius: 0 !important; 
     box-shadow: none !important;
-    color: #FFFFFF !important;
+    color: #000000 !important;
 }
 
 .stProgress > div > div { 
@@ -345,9 +344,9 @@ hr { border: none; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 3
 .stSpinner > div { border-color: #D71921 !important; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #0A0A0A; border-radius: 0; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 0; border: 2px solid #0A0A0A; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
+::-webkit-scrollbar-track { background: #FAFAFA; border-radius: 0; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 0; border: 2px solid #FAFAFA; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
 </style>
 """, unsafe_allow_html=True)
 
