@@ -1,7 +1,7 @@
 """
 🚀 SHAMIQUKHAN STOCK ADVISOR - 100% ERROR-FREE VERSION
 ✅ Multi-select stocks ✓ Custom tickers ✓ FREE AI Analysis
-✅ NO time.sleep error ✓ Production ready
+✅ News + Sentiment ✓ Health Scoring ✓ Risk Analysis
 """
 
 import random
@@ -16,6 +16,8 @@ import streamlit.components.v1 as components
 from cache_manager import clear_cache
 from data_sources import get_demo_stock, get_stock_data, get_stocks_parallel
 from scoring import calculate_ai_score, get_recommendation
+from health_scoring import calculate_health_score, calculate_volatility_risk
+from news_sentiment import fetch_stock_news, calculate_overall_sentiment
 
 # Page config
 st.set_page_config(
@@ -450,18 +452,53 @@ if 'analyze' in st.session_state and st.session_state.analyze:
         st.success(f"✅ Fetched {len(stock_data)} stocks in parallel!")
         
     
-    # === ANALYSIS ===
+    # === ANALYSIS WITH ENHANCED FEATURES ===
     analysis_results = []
     total_return = 0.0
+    
+    # Fetch news and calculate health scores (can be done in parallel with stock data)
+    with st.spinner("📰 Fetching news and analyzing sentiment..."):
+        news_data = {}
+        health_data = {}
+        for ticker in selected_stocks:
+            data = stock_data.get(ticker, {})
+            if data.get('success'):
+                # Fetch news and sentiment
+                articles = fetch_stock_news(ticker, max_articles=5)
+                sentiment = calculate_overall_sentiment(articles)
+                news_data[ticker] = {'articles': articles, 'sentiment': sentiment}
+                
+                # Calculate health score
+                health = calculate_health_score(data)
+                risk = calculate_volatility_risk(data)
+                health_data[ticker] = {'health': health, 'risk': risk}
+    
     for ticker, data in stock_data.items():
-        score = calculate_ai_score(data)
-        recommendation = get_recommendation(score)
+        # Get enhanced metrics
+        news_info = news_data.get(ticker, {'sentiment': {'score': 0.0, 'label': '🟡 No News'}})
+        health_info = health_data.get(ticker, {'health': {'score': 50, 'grade': 'C'}, 'risk': {'score': 5}})
+        
+        sentiment_score = news_info['sentiment']['score']
+        health_score = health_info['health']['score']
+        
+        # Calculate enhanced AI score
+        score = calculate_ai_score(data, health_score, sentiment_score)
+        
+        # Get comprehensive recommendation
+        recommendation_data = get_recommendation(
+            score,
+            health_grade=health_info['health']['grade'],
+            sentiment_label=news_info['sentiment']['label'],
+            risk_label=health_info['risk']['label']
+        )
         
         analysis_results.append({
             'ticker': data.get('ticker', ticker),
             'name': data.get('name', ticker)[:30] + "..." if len(data.get('name', '')) > 30 else data.get('name', ticker),
             'score': score,
-            'recommendation': recommendation,
+            'recommendation': recommendation_data['recommendation'],
+            'confidence': recommendation_data['confidence'],
+            'explanation': recommendation_data['explanation'],
             'price': data.get('price', 0),
             'change': data.get('change', 0),
             'pe': data.get('pe', 'N/A'),
@@ -469,7 +506,13 @@ if 'analyze' in st.session_state and st.session_state.analyze:
             'marketCap': data.get('marketCap', 0),
             'dividend': data.get('dividend', 0),
             'sector': data.get('sector', 'Unknown'),
-            'success': data.get('success', False)
+            'success': data.get('success', False),
+            'health_score': health_score,
+            'health_grade': health_info['health']['grade'],
+            'sentiment_score': sentiment_score,
+            'sentiment_label': news_info['sentiment']['label'],
+            'risk_label': health_info['risk']['label'],
+            'news_articles': news_info.get('articles', [])
         })
     
     # Sort: successful + high score first
@@ -548,34 +591,72 @@ if 'analyze' in st.session_state and st.session_state.analyze:
                         {trend_symbol} {result['change']:.2f}%
                     </p>
                     <div style='margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.08);'>
-                        <div style='display: flex; justify-content: space-between; align-items: center;'>
+                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
                             <span style='font-family: "Noto Sans", sans-serif; color: var(--cornsilk); font-size: 0.85rem;'>
                                 Score: <strong style='color: var(--sunlit-clay); letter-spacing: 0.04em;'>{score_val:.1f}/10</strong>
                             </span>
                             <span style='font-family: "Noto Sans", sans-serif; color: var(--cornsilk); font-size: 0.85rem;'>
-                                RSI: <strong style='font-family: "LetteraMono", monospace;'>{result['rsi']:.0f}</strong>
+                                Health: <strong style='font-family: "LetteraMono", monospace;'>{result.get('health_grade', 'N/A')}</strong>
                             </span>
+                        </div>
+                        <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>
+                            {result.get('sentiment_label', '🟡 No News')}
                         </div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
     
+    # === DETAILED ANALYSIS WITH NEWS ===
+    st.markdown("---")
+    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>📋 DETAILED STOCK ANALYSIS</h2>", unsafe_allow_html=True)
+    
+    if successful_results:
+        for result in successful_results:
+            with st.expander(f"📊 {result['ticker']} - {result['name']} | Score: {result['score']:.1f}/10"):
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric("Price", f"${result['price']:.2f}", f"{result['change']:+.2f}%")
+                    st.metric("AI Score", f"{result['score']:.1f}/10", help="Composite score from fundamentals + health + sentiment")
+                
+                with col2:
+                    st.metric("Health Grade", result.get('health_grade', 'N/A'), help="Financial health based on fundamentals")
+                    st.metric("P/E Ratio", result.get('pe', 'N/A'))
+                
+                with col3:
+                    st.metric("Sentiment", result.get('sentiment_label', '🟡 Neutral'))
+                    st.metric("Risk", result.get('risk_label', '🟡 Moderate'))
+                
+                st.markdown(f"**Recommendation:** {result['recommendation']} ({result.get('confidence', 'N/A')} Confidence)")
+                st.markdown(f"**Analysis:** {result.get('explanation', 'No analysis available')}")
+                
+                # News section
+                articles = result.get('news_articles', [])
+                if articles:
+                    st.markdown("**📰 Recent News:**")
+                    for article in articles[:3]:
+                        sentiment_color = "🟢" if article['sentiment_score'] > 0.2 else ("🔴" if article['sentiment_score'] < -0.2 else "🟡")
+                        st.markdown(f"{sentiment_color} **[{article['title']}]({article['link']})** - {article['published']}")
+                else:
+                    st.info("No recent news available")
+    
     # === ANALYSIS TABLE ===
     st.markdown("---")
-    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>📊 COMPREHENSIVE MARKET ANALYSIS</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>📊 COMPREHENSIVE MARKET DATA</h2>", unsafe_allow_html=True)
     
     if successful_results:
         df = pd.DataFrame(successful_results)
 
         st.dataframe(
-            df[['ticker', 'name', 'score', 'recommendation', 'price', 'change', 
-                'rsi', 'pe', 'marketCap']],
+            df[['ticker', 'name', 'score', 'health_grade', 'recommendation', 'price', 'change', 
+                'rsi', 'pe', 'sentiment_label']],
             use_container_width=True,
             column_config={
                 "score": st.column_config.NumberColumn("AI Score", format="%.1f", min_value=0, max_value=10),
+                "health_grade": "Health",
                 "change": st.column_config.NumberColumn("Change %", format="%.1f%%"),
                 "price": st.column_config.NumberColumn("Price", format="$%.0f"),
-                "marketCap": st.column_config.NumberColumn("Market Cap B$", format="%.1f")
+                "sentiment_label": "News Sentiment"
             },
             hide_index=True
         )
