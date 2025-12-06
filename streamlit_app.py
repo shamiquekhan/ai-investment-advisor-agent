@@ -778,11 +778,23 @@ if 'analyze' in st.session_state and st.session_state.analyze:
             total_return += proj_return * weight_pct
             
             with col:
-                st.metric(
-                    label=f"{result['ticker']}\n<small>({weight_pct}%)</small>",
-                    value=f"${allocation:,.0f}",
-                    delta=f"{proj_return:.1f}%"
-                )
+                # Display with proper formatting
+                st.markdown(f"""
+                <div style='background: #FAFAFA; border: 1px solid #E0E0E0; border-radius: 8px; padding: 1.5rem; text-align: center;'>
+                    <p style='font-size: 1.8rem; font-weight: 700; margin: 0 0 0.3rem 0; color: #000000; font-family: "LetteraMono", monospace;'>
+                        {result['ticker']}
+                    </p>
+                    <p style='font-size: 0.9rem; color: #666666; margin: 0 0 1rem 0;'>
+                        ({weight_pct}% allocation)
+                    </p>
+                    <p style='font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #000000;'>
+                        ${allocation:,.0f}
+                    </p>
+                    <p style='font-size: 1.1rem; color: {"#22c55e" if proj_return >= 0 else "#ef4444"}; font-weight: 600; margin: 0;'>
+                        {"↑" if proj_return >= 0 else "↓"} {proj_return:+.1f}%
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
         
         # Portfolio summary
         col1, col2, col3 = st.columns(3)
