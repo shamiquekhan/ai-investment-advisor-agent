@@ -894,77 +894,82 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     st.markdown("---")
     if successful_results:
         top3 = [r['ticker'] for r in successful_results[:3]]
-        # Nothing-inspired report
+        # Enhanced readable report with light theme
         st.markdown(f"""
-<div style='background: linear-gradient(135deg, rgba(27, 27, 29, 0.95) 0%, rgba(16, 16, 18, 0.95) 100%);
-border: 1px solid rgba(255,255,255,0.08); border-top: 4px solid #D71921; border-radius: 14px; padding: 2.5rem;
-box-shadow: 0 16px 40px rgba(0,0,0,0.5); font-family: "Noto Sans", "Ndot", sans-serif;'>
-    <div style='text-align: center; margin-bottom: 2rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1rem;'>
-        <h3 class='report-title' style='font-size: 2rem; font-weight: 600; margin: 0; text-transform: uppercase;'>
+<div style='background: #FFFFFF;
+border: 2px solid #D71921; border-radius: 8px; padding: 3rem;
+box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
+    <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
+        <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
             📊 INVESTMENT ANALYSIS REPORT
-        </h3>
-        <p class='report-subhead' style='font-size: 0.9rem; font-weight: 400; margin-top: 0.5rem;'>
+        </h2>
+        <p style='font-size: 1rem; font-weight: 400; margin-top: 0.8rem; color: #666666;'>
             Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
         </p>
     </div>
-    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.8rem;'>
-        <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
-            <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Top Holdings</p>
-            <p class='report-copy' style='font-size: 1.2rem; font-family: "LetteraMono", monospace; font-weight: 500; margin: 0;'>
+    
+    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;'>
+        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>TOP HOLDINGS</p>
+            <p style='font-size: 1.5rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0; color: #000000;'>
                 {', '.join(top3)}
             </p>
         </div>
-        <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
-            <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Expected Annual Return</p>
-            <p class='report-copy' style='font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
+        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>EXPECTED ANNUAL RETURN</p>
+            <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
                 {total_return:.2f}%
             </p>
         </div>
-        <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
-            <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Risk Profile</p>
-            <p class='report-copy' style='font-size: 1.2rem; font-family: "Noto Sans", sans-serif; font-weight: 500; margin: 0;'>
+        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>RISK PROFILE</p>
+            <p style='font-size: 1.5rem; font-family: "Noto Sans", sans-serif; font-weight: 600; margin: 0; color: #000000;'>
                 {risk}
             </p>
         </div>
-        <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
-            <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Stocks Analyzed</p>
-            <p class='report-copy' style='font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
+        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>STOCKS ANALYZED</p>
+            <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
                 {len(successful_results)}
             </p>
         </div>
     </div>
-    <div style='background: rgba(255,255,255,0.03); padding: 1.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);'>
-        <h4 class='dot-matrix' style='color: #D71921; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.05rem; font-weight: 600; margin: 0 0 1.2rem 0; letter-spacing: 0.08em;'>✓ RECOMMENDED ACTION PLAN</h4>
-        <div style='display: grid; gap: 0.9rem;'>
-            <div style='display: flex; align-items: start; gap: 0.8rem;'>
-                <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>1</span>
-                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #F3F1E7;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
+    
+    <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
+        <h3 style='color: #000000; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem 0; letter-spacing: 0.05em; text-transform: uppercase;'>
+            ✓ RECOMMENDED ACTION PLAN
+        </h3>
+        <div style='display: grid; gap: 1.2rem;'>
+            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>1</span>
+                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                    <strong style='color: #000000; font-weight: 600;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
                 </p>
             </div>
-            <div style='display: flex; align-items: start; gap: 0.8rem;'>
-                <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>2</span>
-                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #F3F1E7;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
+            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>2</span>
+                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                    <strong style='color: #000000; font-weight: 600;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
                 </p>
             </div>
-            <div style='display: flex; align-items: start; gap: 0.8rem;'>
-                <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>3</span>
-                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #F3F1E7;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
+            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>3</span>
+                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                    <strong style='color: #000000; font-weight: 600;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
                 </p>
             </div>
-            <div style='display: flex; align-items: start; gap: 0.8rem;'>
-                <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>4</span>
-                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #F3F1E7;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
+            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>4</span>
+                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                    <strong style='color: #000000; font-weight: 600;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
                 </p>
             </div>
         </div>
     </div>
-    <div style='margin-top: 1.8rem; padding-top: 1.2rem; border-top: 1px solid rgba(255,255,255,0.06); text-align: center;'>
-        <p class='report-muted' style='font-size: 0.85rem; line-height: 1.6; margin: 0;'>
-            <strong style='color: #D71921;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
+    
+    <div style='margin-top: 2rem; padding: 1.5rem; background: #FFF9E6; border-radius: 8px; border: 1px solid #FFD700; text-align: center;'>
+        <p style='font-size: 1rem; line-height: 1.7; margin: 0; color: #333333;'>
+            <strong style='color: #D71921; font-weight: 700;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
         </p>
     </div>
 </div>
