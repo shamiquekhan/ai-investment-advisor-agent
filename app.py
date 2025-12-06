@@ -15,7 +15,7 @@ import time
 
 # Page config
 st.set_page_config(
-    page_title="🚀 shamiquekhan Stock Advisor",
+    page_title="🚀 AI Stock Advisor",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
