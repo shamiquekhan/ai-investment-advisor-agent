@@ -55,15 +55,13 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;600;700&display=swap');
 
 :root {
-    --nothing-black: #000000;
-    --nothing-white: #FFFFFF;
-    --nothing-red: #FF0000;
-    --nothing-gray: #1A1A1A;
-    --nothing-light-gray: #333333;
+    --bg-main: #0A0A0A;
+    --bg-panel: #141414;
     --text-primary: #FFFFFF;
-    --text-secondary: rgba(255, 255, 255, 0.7);
-    --border-subtle: rgba(255, 255, 255, 0.1);
-    --panel-bg: rgba(255, 255, 255, 0.03);
+    --text-secondary: #B0B0B0;
+    --accent-red: #D71921;
+    --border-color: rgba(255, 255, 255, 0.08);
+    --hover-bg: rgba(255, 255, 255, 0.03);
 }
 
 * {
@@ -71,28 +69,29 @@ st.markdown("""
 }
 
 .stApp {
-    background: #F5F5F5;
-    color: #000000;
+    background: linear-gradient(180deg, #0A0A0A 0%, #000000 100%);
+    color: #FFFFFF;
     font-family: 'Ndot', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 .main-header {
     font-family: 'Ndot', sans-serif;
-    font-size: 3rem !important;
+    font-size: 3.5rem !important;
     font-weight: 400 !important;
-    letter-spacing: 0.15em;
-    color: #000000;
+    letter-spacing: 0.18em;
+    color: #FFFFFF;
     text-align: center;
-    margin: 3rem 0 1rem 0;
+    margin: 3rem 0 1.5rem 0;
     padding: 0;
     text-transform: uppercase;
     line-height: 1.2;
-    background-image: radial-gradient(circle, #000000 55%, transparent 58%);
-    background-size: 5px 5px;
+    background-image: radial-gradient(circle, #FFFFFF 52%, transparent 55%);
+    background-size: 4.5px 4.5px;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     animation: fadeInDown 0.6s ease-out;
+    filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.15));
 }
 
 @keyframes fadeInDown {
@@ -102,10 +101,10 @@ st.markdown("""
 
 .subtitle {
     font-family: 'Ndot', sans-serif;
-    font-size: 0.75rem;
-    color: rgba(0, 0, 0, 0.5);
+    font-size: 0.85rem;
+    color: #B0B0B0;
     text-align: center;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     font-weight: 400;
     margin-bottom: 1rem;
     text-transform: uppercase;
@@ -119,10 +118,10 @@ st.markdown("""
 
 .market-ticker {
     font-family: 'LetteraMono', monospace;
-    font-size: 0.75rem;
-    color: #FF0000;
+    font-size: 0.7rem;
+    color: #D71921;
     text-align: center;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.15em;
     margin: 0.5rem 0 3rem 0;
     text-transform: uppercase;
     font-weight: 400;
@@ -138,15 +137,40 @@ st.markdown("""
     text-shadow: 0 10px 26px var(--shadow);
 }
 
+.report-title {
+    font-family: 'Ndot', 'Noto Sans', sans-serif;
+    letter-spacing: 0.12em;
+    color: #F6F4E8;
+    background-image: radial-gradient(circle, currentColor 58%, transparent 60%);
+    background-size: 6px 6px;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.report-subhead {
+    color: #D6D2C7;
+    opacity: 0.9;
+}
+
+.report-copy {
+    color: #F3F1E7;
+}
+
+.report-muted {
+    color: #CAC6BB;
+}
+
 @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.6; }
 }
 
 .stock-selector {
-    background: #FFFFFF;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    padding: 2rem;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 2.5rem;
     border-radius: 0;
     margin: 2rem 0;
     box-shadow: none;
@@ -160,14 +184,14 @@ st.markdown("""
 
 .stButton > button {
     font-family: 'Ndot', sans-serif;
-    background: #FF0000 !important;
+    background: #D71921 !important;
     color: #FFFFFF !important;
-    border: none !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
     border-radius: 0 !important;
     padding: 1rem 2.5rem !important;
-    font-size: 0.875rem !important;
+    font-size: 0.85rem !important;
     font-weight: 400 !important;
-    letter-spacing: 0.05em !important;
+    letter-spacing: 0.12em !important;
     text-transform: uppercase !important;
     box-shadow: none !important;
     transition: all 0.2s ease !important;
@@ -183,7 +207,7 @@ st.markdown("""
     width: 0;
     height: 0;
     border-radius: 50%;
-    background: rgba(237, 235, 221, 0.2);
+    background: rgba(255, 255, 255, 0.1);
     transform: translate(-50%, -50%);
     transition: width 0.6s, height 0.6s;
 }
@@ -191,29 +215,30 @@ st.markdown("""
 .stButton > button:hover::before { width: 280px; height: 280px; }
 
 .stButton > button:hover {
-    background: #CC0000 !important;
-    transform: none;
+    background: #B01519 !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    transform: translateY(-1px);
 }
 
 .stButton > button:active { transform: translateY(-1px) scale(0.99); }
 
 div[data-testid="stMetric"] {
-    background: #FFFFFF;
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0;
     padding: 1.5rem !important;
     box-shadow: none;
 }
 
 div[data-testid="stMetric"]:hover {
-    background: #FFFFFF;
-    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
     transform: none;
 }
 
 div[data-testid="stMetricValue"] {
     font-family: 'Ndot', sans-serif;
-    color: #000000 !important;
+    color: #FFFFFF !important;
     font-size: 2rem !important;
     font-weight: 400 !important;
     letter-spacing: 0;
@@ -226,22 +251,22 @@ div[data-testid="stMetricDelta"] {
 }
 
 .metric-card {
-    background: #FFFFFF;
-    border: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 0;
     padding: 1.5rem;
     box-shadow: none;
 }
 
 .metric-card:hover { 
-    background: #FFFFFF;
-    border-color: rgba(0, 0, 0, 0.1);
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
 }
 
 .stTextInput input, .stSelectbox select, .stMultiSelect {
-    background: #FFFFFF !important;
-    color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    background: rgba(255, 255, 255, 0.03) !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     font-size: 0.875rem !important;
@@ -250,35 +275,38 @@ div[data-testid="stMetricDelta"] {
 }
 
 .stTextInput input:focus, .stSelectbox select:focus, .stMultiSelect:focus-within {
-    border: 1px solid rgba(0, 0, 0, 0.2) !important;
+    border: 1px solid rgba(215, 25, 33, 0.5) !important;
     box-shadow: none !important;
     outline: none !important;
-    background: #FFFFFF !important;
+    background: rgba(255, 255, 255, 0.05) !important;
 }
 
 .stDataFrame {
-    background: #FFFFFF !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     overflow: hidden;
 }
 
 .streamlit-expanderHeader {
-    background: #FFFFFF !important;
-    color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.06) !important;
+    background: rgba(255, 255, 255, 0.02) !important;
+    color: #FFFFFF !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
     border-radius: 0 !important;
     font-family: 'Ndot', sans-serif !important;
     padding: 1rem 1.5rem !important;
 }
 
-.streamlit-expanderHeader:hover { border-color: rgba(0, 0, 0, 0.15) !important; }
+.streamlit-expanderHeader:hover { 
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(215, 25, 33, 0.3) !important; 
+}
 
 .footer {
-    background: #FFFFFF;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    border-top: 2px solid #000000;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-top: 2px solid #D71921;
     border-radius: 0;
     padding: 3rem;
     margin-top: 4rem;
@@ -287,39 +315,39 @@ div[data-testid="stMetricDelta"] {
 
 .footer h3 {
     font-family: 'Ndot', sans-serif;
-    color: #000000;
-    letter-spacing: 0.02em;
+    color: #FFFFFF;
+    letter-spacing: 0.08em;
 }
 
-h1, h2, h3, h4, h5, h6 { font-family: 'Ndot', sans-serif !important; color: #000000 !important; font-weight: 400 !important; letter-spacing: 0.02em !important; text-transform: none !important; }
+h1, h2, h3, h4, h5, h6 { font-family: 'Ndot', sans-serif !important; color: #FFFFFF !important; font-weight: 400 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
 
-p, span, div, label { font-family: 'Ndot', sans-serif !important; font-size: 0.875rem !important; color: rgba(0, 0, 0, 0.8) !important; }
+p, span, div, label { font-family: 'Ndot', sans-serif !important; font-size: 0.875rem !important; color: #B0B0B0 !important; }
 
-hr { border: none; height: 1px; background: rgba(0, 0, 0, 0.08); margin: 3rem 0; }
+hr { border: none; height: 1px; background: rgba(255, 255, 255, 0.08); margin: 3rem 0; }
 
-.stCheckbox { color: #000000 !important; }
-.stCheckbox > label { font-family: 'Ndot', sans-serif; font-size: 0.875rem; font-weight: 400; color: #000000 !important; }
+.stCheckbox { color: #FFFFFF !important; }
+.stCheckbox > label { font-family: 'Ndot', sans-serif; font-size: 0.875rem; font-weight: 400; color: #B0B0B0 !important; }
 
 .stAlert { 
-    background: rgba(255, 0, 0, 0.08) !important; 
-    border-left: 3px solid #FF0000 !important; 
+    background: rgba(215, 25, 33, 0.1) !important; 
+    border-left: 3px solid #D71921 !important; 
     border-radius: 0 !important; 
     box-shadow: none !important;
-    color: #000000 !important;
+    color: #FFFFFF !important;
 }
 
 .stProgress > div > div { 
-    background: #FF0000 !important; 
+    background: #D71921 !important; 
     border-radius: 0 !important; 
     box-shadow: none !important; 
 }
 
-.stSpinner > div { border-color: #FF0000 !important; }
+.stSpinner > div { border-color: #D71921 !important; }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #F5F5F5; border-radius: 0; }
-::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 0; border: 2px solid #F5F5F5; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+::-webkit-scrollbar-track { background: #0A0A0A; border-radius: 0; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 0; border: 2px solid #0A0A0A; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.25); }
 </style>
 """, unsafe_allow_html=True)
 
@@ -415,7 +443,7 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     # === DATA FETCHING (PARALLEL) ===
     with st.spinner(f"📊 Fetching LIVE market data for {len(selected_stocks)} stocks in parallel..."):
         # Fetch all stocks in parallel using ThreadPoolExecutor
-        stock_data_list = get_stocks_parallel(selected_stocks, max_workers=10)
+        stock_data_list = get_stocks_parallel(selected_stocks)
         
         # Convert list to dictionary for easier access
         stock_data = {data['ticker']: data for data in stock_data_list}
@@ -701,70 +729,70 @@ if 'analyze' in st.session_state and st.session_state.analyze:
 border: 1px solid rgba(255,255,255,0.08); border-top: 4px solid #D71921; border-radius: 14px; padding: 2.5rem;
 box-shadow: 0 16px 40px rgba(0,0,0,0.5); font-family: "Noto Sans", "Ndot", sans-serif;'>
     <div style='text-align: center; margin-bottom: 2rem; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 1rem;'>
-        <h3 style='font-family: "Ndot", "Noto Sans", sans-serif; color: #EDEBDD; font-size: 2rem; font-weight: 600; margin: 0; letter-spacing: 0.08em;'>
+        <h3 class='report-title' style='font-size: 2rem; font-weight: 600; margin: 0; text-transform: uppercase;'>
             📊 INVESTMENT ANALYSIS REPORT
         </h3>
-        <p style='color: #BEBBB3; font-size: 0.9rem; font-weight: 400; margin-top: 0.5rem; opacity: 0.85;'>
+        <p class='report-subhead' style='font-size: 0.9rem; font-weight: 400; margin-top: 0.5rem;'>
             Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
         </p>
     </div>
     <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem; margin-bottom: 1.8rem;'>
         <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
             <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Top Holdings</p>
-            <p style='color: #EDEBDD; font-size: 1.2rem; font-family: "LetteraMono", monospace; font-weight: 500; margin: 0;'>
+            <p class='report-copy' style='font-size: 1.2rem; font-family: "LetteraMono", monospace; font-weight: 500; margin: 0;'>
                 {', '.join(top3)}
             </p>
         </div>
         <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
             <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Expected Annual Return</p>
-            <p style='color: #EDEBDD; font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
+            <p class='report-copy' style='font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
                 {total_return:.2f}%
             </p>
         </div>
         <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
             <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Risk Profile</p>
-            <p style='color: #EDEBDD; font-size: 1.2rem; font-family: "Noto Sans", sans-serif; font-weight: 500; margin: 0;'>
+            <p class='report-copy' style='font-size: 1.2rem; font-family: "Noto Sans", sans-serif; font-weight: 500; margin: 0;'>
                 {risk}
             </p>
         </div>
         <div style='background: rgba(255,255,255,0.04); padding: 1.4rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); box-shadow: 0 12px 28px rgba(0,0,0,0.4);'>
             <p style='color: #D71921; font-size: 0.85rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.4rem 0; letter-spacing: 0.08em;'>Stocks Analyzed</p>
-            <p style='color: #EDEBDD; font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
+            <p class='report-copy' style='font-size: 1.8rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0;'>
                 {len(successful_results)}
             </p>
         </div>
     </div>
     <div style='background: rgba(255,255,255,0.03); padding: 1.8rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.06);'>
-        <h4 style='color: #D71921; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.05rem; font-weight: 600; margin: 0 0 1.2rem 0; letter-spacing: 0.08em;'>✓ RECOMMENDED ACTION PLAN</h4>
+        <h4 class='dot-matrix' style='color: #D71921; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.05rem; font-weight: 600; margin: 0 0 1.2rem 0; letter-spacing: 0.08em;'>✓ RECOMMENDED ACTION PLAN</h4>
         <div style='display: grid; gap: 0.9rem;'>
             <div style='display: flex; align-items: start; gap: 0.8rem;'>
                 <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>1</span>
-                <p style='color: #EDEBDD; font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #EDEBDD;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
+                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
+                    <strong style='color: #F3F1E7;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
                 </p>
             </div>
             <div style='display: flex; align-items: start; gap: 0.8rem;'>
                 <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>2</span>
-                <p style='color: #EDEBDD; font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #EDEBDD;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
+                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
+                    <strong style='color: #F3F1E7;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
                 </p>
             </div>
             <div style='display: flex; align-items: start; gap: 0.8rem;'>
                 <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>3</span>
-                <p style='color: #EDEBDD; font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #EDEBDD;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
+                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
+                    <strong style='color: #F3F1E7;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
                 </p>
             </div>
             <div style='display: flex; align-items: start; gap: 0.8rem;'>
                 <span style='color: #D71921; font-size: 1.2rem; line-height: 1;'>4</span>
-                <p style='color: #EDEBDD; font-size: 1rem; line-height: 1.6; margin: 0;'>
-                    <strong style='color: #EDEBDD;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
+                <p class='report-copy' style='font-size: 1rem; line-height: 1.6; margin: 0;'>
+                    <strong style='color: #F3F1E7;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
                 </p>
             </div>
         </div>
     </div>
     <div style='margin-top: 1.8rem; padding-top: 1.2rem; border-top: 1px solid rgba(255,255,255,0.06); text-align: center;'>
-        <p style='color: #BEBBB3; font-size: 0.85rem; line-height: 1.6; opacity: 0.85; margin: 0;'>
+        <p class='report-muted' style='font-size: 0.85rem; line-height: 1.6; margin: 0;'>
             <strong style='color: #D71921;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
         </p>
     </div>

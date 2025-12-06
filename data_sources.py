@@ -1,6 +1,7 @@
 """Data access helpers for stock advisor app with parallel API requests."""
 
 import concurrent.futures
+import random
 import time
 from typing import List, Dict
 
@@ -11,6 +12,16 @@ import yfinance as yf
 from cache_manager import get_cached_stock, set_cached_stock
 
 
+# Concurrency and throttling safeguards to reduce yfinance rate-limit errors
+MAX_WORKERS = 6
+BATCH_SIZE = 8
+BATCH_PAUSE_SECONDS = 0.8
+MAX_RETRIES = 4
+BACKOFF_BASE = 0.8
+BACKOFF_FACTOR = 1.6
+JITTER_MAX = 0.35
+
+
 @st.cache_data(ttl=180)
 def get_stock_data(ticker: str):
     """Fetch live stock data for a single ticker with file-based cache fallback."""
@@ -18,9 +29,8 @@ def get_stock_data(ticker: str):
     cached = get_cached_stock(ticker)
     if cached:
         return cached
-    
-    tries = 3
-    for attempt in range(tries):
+
+    for attempt in range(MAX_RETRIES):
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
@@ -54,10 +64,21 @@ def get_stock_data(ticker: str):
             set_cached_stock(ticker, result)
             return result
         except Exception as exc:  # noqa: PERF203
-            if "429" in str(exc):
-                time.sleep(0.6 * (attempt + 1))
+            message = str(exc)
+            is_rate_limited = any(keyword in message for keyword in ("429", "Rate", "Too Many", "limit"))
+
+            # Exponential backoff with jitter for throttling
+            if is_rate_limited and attempt < MAX_RETRIES - 1:
+                delay = BACKOFF_BASE * (BACKOFF_FACTOR ** attempt) + random.uniform(0, JITTER_MAX)
+                time.sleep(delay)
                 continue
-            # On non-429 error, still return error dict (don't cache failures)
+
+            # For transient network issues, retry with a small pause
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(0.4 * (attempt + 1))
+                continue
+
+            # On final failure, return an error dict (don't cache failures)
             return {
                 "success": False,
                 "ticker": ticker,
@@ -74,53 +95,50 @@ def get_stock_data(ticker: str):
     }
 
 
-def get_stocks_parallel(tickers: List[str], max_workers: int = 10) -> List[Dict]:
+def get_stocks_parallel(tickers: List[str], max_workers: int = MAX_WORKERS) -> List[Dict]:
     """
-    Fetch stock data for multiple tickers in parallel using ThreadPoolExecutor.
-    
-    Args:
-        tickers: List of stock ticker symbols
-        max_workers: Maximum number of concurrent API requests (default: 10)
-    
-    Returns:
-        List of stock data dictionaries in the same order as input tickers
+    Fetch stock data for multiple tickers with batched parallelism to avoid throttling.
     """
-    results = []
-    
-    # Use ThreadPoolExecutor for parallel API requests
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all fetch tasks
-        future_to_ticker = {
-            executor.submit(get_stock_data, ticker): ticker 
-            for ticker in tickers
-        }
-        
-        # Collect results as they complete
-        for future in concurrent.futures.as_completed(future_to_ticker):
-            try:
-                data = future.result(timeout=30)  # 30 second timeout per request
-                results.append(data)
-            except concurrent.futures.TimeoutError:
+
+    results: List[Dict] = []
+    capped_workers = max(1, min(max_workers, MAX_WORKERS))
+
+    def fetch_batch(batch: List[str]) -> List[Dict]:
+        batch_results: List[Dict] = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=capped_workers) as executor:
+            future_to_ticker = {executor.submit(get_stock_data, ticker): ticker for ticker in batch}
+            for future in concurrent.futures.as_completed(future_to_ticker):
                 ticker = future_to_ticker[future]
-                results.append({
-                    "success": False,
-                    "ticker": ticker,
-                    "name": ticker,
-                    "error": "Request timeout"
-                })
-            except Exception as exc:
-                ticker = future_to_ticker[future]
-                results.append({
-                    "success": False,
-                    "ticker": ticker,
-                    "name": ticker,
-                    "error": f"Error: {str(exc)}"
-                })
-    
+                try:
+                    data = future.result(timeout=30)
+                    batch_results.append(data)
+                except concurrent.futures.TimeoutError:
+                    batch_results.append({
+                        "success": False,
+                        "ticker": ticker,
+                        "name": ticker,
+                        "error": "Request timeout",
+                    })
+                except Exception as exc:  # noqa: PERF203
+                    batch_results.append({
+                        "success": False,
+                        "ticker": ticker,
+                        "name": ticker,
+                        "error": f"Error: {exc}",
+                    })
+        return batch_results
+
+    # Process tickers in small batches with a pause to respect rate limits
+    for start in range(0, len(tickers), BATCH_SIZE):
+        batch = tickers[start : start + BATCH_SIZE]
+        results.extend(fetch_batch(batch))
+        if start + BATCH_SIZE < len(tickers):
+            time.sleep(BATCH_PAUSE_SECONDS)
+
     # Sort results to match original ticker order
     ticker_order = {ticker: i for i, ticker in enumerate(tickers)}
     results.sort(key=lambda x: ticker_order.get(x["ticker"], 999))
-    
+
     return results
 
 
