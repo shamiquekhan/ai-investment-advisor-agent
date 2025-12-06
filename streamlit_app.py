@@ -476,7 +476,10 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     for ticker, data in stock_data.items():
         # Get enhanced metrics
         news_info = news_data.get(ticker, {'sentiment': {'score': 0.0, 'label': '🟡 No News'}})
-        health_info = health_data.get(ticker, {'health': {'score': 50, 'grade': 'C'}, 'risk': {'score': 5}})
+        health_info = health_data.get(ticker, {
+            'health': {'score': 50, 'grade': 'C'}, 
+            'risk': {'score': 5, 'label': '🟡 Moderate Risk'}
+        })
         
         sentiment_score = news_info['sentiment']['score']
         health_score = health_info['health']['score']
