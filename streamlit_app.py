@@ -429,21 +429,34 @@ def render_css():
             transform: translateY(-50%) !important;
         }
         
-        /* Hide keyboard arrow text artifacts */
-        .streamlit-expanderHeader p:first-child::after,
-        [data-testid="stExpander"] summary::after {
-            content: none !important;
+        /* AGGRESSIVE: Hide all keyboard_arrow text artifacts */
+        [data-testid="stExpander"] button p,
+        [data-testid="stExpander"] summary p,
+        .streamlit-expanderHeader p {
+            font-size: 0 !important;
         }
         
-        /* Hide any text containing 'keyboard_arrow' */
-        p:has-text("keyboard_arrow") {
+        /* Show only the expander label text */
+        [data-testid="stExpander"] button p > *,
+        [data-testid="stExpander"] summary p > *,
+        .streamlit-expanderHeader p > * {
+            font-size: 0.9rem !important;
+        }
+        
+        /* Hide text nodes that contain 'keyboard' */
+        [data-testid="stExpander"] button::after,
+        [data-testid="stExpander"] summary::after {
+            content: '' !important;
             display: none !important;
         }
         
-        /* Target Streamlit's icon text rendering */
-        .streamlit-expanderHeader p {
+        /* Target the specific expander button */
+        [data-testid="stExpander"] > div > button {
             overflow: hidden !important;
-            text-overflow: clip !important;
+        }
+        
+        [data-testid="stExpander"] > div > button > div {
+            overflow: hidden !important;
         }
         
         /* Ensure only the label text shows */
@@ -452,12 +465,6 @@ def render_css():
         }
         
         [data-testid="stExpander"] summary::-webkit-details-marker {
-            display: none !important;
-        }
-        
-        /* Hide material icon text names */
-        .streamlit-expanderHeader span[class*="icon"],
-        .streamlit-expanderHeader span[class*="keyboard"] {
             display: none !important;
         }
         
