@@ -701,7 +701,21 @@ def footer():
     st.markdown(
         """
         <div class='footer'>
-            <p>AI Investment Advisor • Educational use only. Consult a licensed advisor before investing.</p>
+            <p style='font-size:0.9rem;margin-bottom:0.8rem;'>
+                <strong>Developed by Shamique Khan</strong><br>
+                AI/ML Engineer • Data Scientist
+            </p>
+            <p style='font-size:0.85rem;margin-bottom:0.8rem;'>
+                <a href='https://github.com/shamiquekhan' target='_blank' style='color:var(--accent-1-500);text-decoration:none;margin-right:1.5rem;'>
+                    <span style='font-size:1.2rem;'>🔗</span> GitHub
+                </a>
+                <a href='https://www.linkedin.com/in/shamique-khan/' target='_blank' style='color:var(--accent-1-500);text-decoration:none;'>
+                    <span style='font-size:1.2rem;'>💼</span> LinkedIn
+                </a>
+            </p>
+            <p style='font-size:0.75rem;color:var(--neutral-1-500);'>
+                AI Investment Advisor • Educational use only. Consult a licensed advisor before investing.
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
