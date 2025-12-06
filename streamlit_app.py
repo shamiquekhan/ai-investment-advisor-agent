@@ -414,6 +414,7 @@ def render_css():
             min-height: 3rem !important;
             display: flex !important;
             align-items: center !important;
+            font-size: 0.9rem !important;
         }
         
         .streamlit-expanderHeader:hover {
@@ -421,51 +422,25 @@ def render_css():
             border-color: var(--accent-1-500) !important;
         }
         
-        /* Hide the default expander icon to prevent overlap */
-        button[kind="header"] svg {
+        /* Hide Streamlit's icon SVG */
+        [data-testid="stExpander"] svg {
             position: absolute !important;
             right: 1rem !important;
             top: 50% !important;
             transform: translateY(-50%) !important;
         }
         
-        /* AGGRESSIVE: Hide all keyboard_arrow text artifacts */
-        [data-testid="stExpander"] button p,
-        [data-testid="stExpander"] summary p,
-        .streamlit-expanderHeader p {
-            font-size: 0 !important;
+        /* Hide the keyboard_arrow_right text by targeting the text node */
+        [data-testid="stExpander"] button[kind="header"] p {
+            display: flex !important;
+            align-items: center !important;
         }
         
-        /* Show only the expander label text */
-        [data-testid="stExpander"] button p > *,
-        [data-testid="stExpander"] summary p > *,
-        .streamlit-expanderHeader p > * {
-            font-size: 0.9rem !important;
-        }
-        
-        /* Hide text nodes that contain 'keyboard' */
-        [data-testid="stExpander"] button::after,
-        [data-testid="stExpander"] summary::after {
-            content: '' !important;
-            display: none !important;
-        }
-        
-        /* Target the specific expander button */
-        [data-testid="stExpander"] > div > button {
-            overflow: hidden !important;
-        }
-        
-        [data-testid="stExpander"] > div > button > div {
-            overflow: hidden !important;
-        }
-        
-        /* Ensure only the label text shows */
-        [data-testid="stExpander"] summary {
-            list-style: none !important;
-        }
-        
-        [data-testid="stExpander"] summary::-webkit-details-marker {
-            display: none !important;
+        /* Hide all direct text nodes, show only child elements */
+        [data-testid="stExpander"] button[kind="header"] p::first-line {
+            visibility: hidden !important;
+            height: 0 !important;
+            width: 0 !important;
         }
         
         .footer {
