@@ -408,13 +408,25 @@ def render_css():
             border: 1px solid var(--neutral-1-200) !important;
             border-radius: 2px !important;
             font-family: 'Doto', monospace !important;
-            padding: 1rem 1.5rem !important;
+            padding: 1rem 3rem 1rem 1.5rem !important;
             font-weight: 600 !important;
+            position: relative !important;
+            min-height: 3rem !important;
+            display: flex !important;
+            align-items: center !important;
         }
         
         .streamlit-expanderHeader:hover {
             background: var(--neutral-1-50) !important;
             border-color: var(--accent-1-500) !important;
+        }
+        
+        /* Hide the default expander icon to prevent overlap */
+        button[kind="header"] svg {
+            position: absolute !important;
+            right: 1rem !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
         }
         
         .footer {
@@ -453,6 +465,12 @@ def render_css():
         }
         
         p {
+            margin-bottom: 0.5rem !important;
+        }
+        
+        /* Ensure labels don't overlap */
+        label {
+            display: block !important;
             margin-bottom: 0.5rem !important;
         }
         
