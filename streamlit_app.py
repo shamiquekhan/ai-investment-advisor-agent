@@ -429,6 +429,38 @@ def render_css():
             transform: translateY(-50%) !important;
         }
         
+        /* Hide keyboard arrow text artifacts */
+        .streamlit-expanderHeader p:first-child::after,
+        [data-testid="stExpander"] summary::after {
+            content: none !important;
+        }
+        
+        /* Hide any text containing 'keyboard_arrow' */
+        p:has-text("keyboard_arrow") {
+            display: none !important;
+        }
+        
+        /* Target Streamlit's icon text rendering */
+        .streamlit-expanderHeader p {
+            overflow: hidden !important;
+            text-overflow: clip !important;
+        }
+        
+        /* Ensure only the label text shows */
+        [data-testid="stExpander"] summary {
+            list-style: none !important;
+        }
+        
+        [data-testid="stExpander"] summary::-webkit-details-marker {
+            display: none !important;
+        }
+        
+        /* Hide material icon text names */
+        .streamlit-expanderHeader span[class*="icon"],
+        .streamlit-expanderHeader span[class*="keyboard"] {
+            display: none !important;
+        }
+        
         .footer {
             background: var(--neutral-1-10);
             border: 1px solid var(--neutral-1-200);
