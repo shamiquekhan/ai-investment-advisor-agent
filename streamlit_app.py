@@ -1012,13 +1012,14 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     st.markdown("---")
     if successful_results:
         top3 = [r['ticker'] for r in successful_results[:3]]
+        
         # Enhanced readable report with light theme
         st.markdown(f"""
         <div style='background: #FFFFFF; border: 2px solid #D71921; border-radius: 8px; padding: 3rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
             <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
                 <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
                     📊 INVESTMENT ANALYSIS REPORT
-                        </h2>
+                </h2>
                 <p style='font-size: 1rem; font-weight: 400; margin-top: 0.8rem; color: #666666;'>
                     Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
                 </p>
@@ -1049,6 +1050,8 @@ if 'analyze' in st.session_state and st.session_state.analyze:
                     </p>
                 </div>
             </div>
+            
+            <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
             
             <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
                 <h3 style='color: #000000; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem 0; letter-spacing: 0.05em; text-transform: uppercase;'>
@@ -1088,9 +1091,7 @@ if 'analyze' in st.session_state and st.session_state.analyze:
                 </p>
             </div>
         </div>
-        """, unsafe_allow_html=True)
-    
-    # Reset button
+        """, unsafe_allow_html=True)    # Reset button
     st.markdown("---")
     col1, col2 = st.columns(2)
     with col1:
