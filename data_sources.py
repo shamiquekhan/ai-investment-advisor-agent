@@ -26,8 +26,28 @@ BACKOFF_BASE = 2.0  # Increased backoff
 BACKOFF_FACTOR = 2.0
 JITTER_MAX = 0.5
 
-# Thread-safe rate limiting
+# Thread-safe rate limiting for Yahoo Finance
 _request_lock = Lock()
+_yf_last_call = 0
+YF_MIN_DELAY = 2.0  # Minimum 2 seconds between Yahoo calls
+
+
+def safe_yf_fetch(ticker: str):
+    """Thread-safe Yahoo Finance fetch with guaranteed rate limiting."""
+    global _yf_last_call
+    
+    with _request_lock:
+        elapsed = time.time() - _yf_last_call
+        if elapsed < YF_MIN_DELAY:
+            time.sleep(YF_MIN_DELAY - elapsed)
+        _yf_last_call = time.time()
+        
+        # Now do the actual call
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        hist = stock.history(period="3mo")
+        
+        return info, hist
 
 
 @st.cache_data(ttl=180)
@@ -38,16 +58,11 @@ def get_stock_data(ticker: str):
     if cached:
         return cached
 
-    # Thread-safe rate limiting
-    with _request_lock:
-        time.sleep(DELAY_BETWEEN_REQUESTS)
-
     for attempt in range(MAX_RETRIES):
         try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            hist = stock.history(period="3mo")
-
+            info, hist = safe_yf_fetch(ticker)
+            
+            # Calculate RSI if we have enough history
             if len(hist) > 14 and not hist.empty:
                 delta = hist["Close"].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(14).mean()
@@ -58,12 +73,18 @@ def get_stock_data(ticker: str):
             else:
                 rsi_val = 50.0
 
+            # Extract price - reject if zero or None
+            price = info.get("currentPrice") or info.get("regularMarketPrice")
+            if price is None or price == 0:
+                # Invalid price, treat as failure
+                raise ValueError(f"Invalid price for {ticker}: {price}")
+
             result = {
                 "success": True,
                 "ticker": ticker,
                 "name": info.get("longName", ticker),
-                "price": info.get("currentPrice", 0) or 0,
-                "change": info.get("regularMarketChangePercent", 0) or 0,
+                "price": float(price),
+                "change": float(info.get("regularMarketChangePercent", 0) or 0),
                 "pe": info.get("trailingPE", "N/A"),
                 "marketCap": (info.get("marketCap", 0) / 1e9) if info.get("marketCap") else 0,
                 "dividend": (info.get("dividendYield", 0) * 100) or 0,
@@ -75,9 +96,25 @@ def get_stock_data(ticker: str):
             # Store in persistent cache
             set_cached_stock(ticker, result)
             return result
+            
+        except (ValueError, KeyError) as exc:
+            # JSON parse error ("Expecting value: line 1 column 1") or invalid data
+            message = str(exc)
+            print(f"⚠️ YFinance parse/data error for {ticker}: {message}")
+            
+            # Don't retry parse errors - data is bad
+            return {
+                "success": False,
+                "ticker": ticker,
+                "name": ticker,
+                "error": "Parse error / Invalid data",
+            }
+            
         except Exception as exc:  # noqa: PERF203
             message = str(exc)
             is_rate_limited = any(keyword in message for keyword in ("429", "Rate", "Too Many", "limit"))
+            
+            print(f"⚠️ YFinance error for {ticker} (attempt {attempt + 1}/{MAX_RETRIES}): {message}")
 
             # Exponential backoff with jitter for throttling
             if is_rate_limited and attempt < MAX_RETRIES - 1:
@@ -87,7 +124,7 @@ def get_stock_data(ticker: str):
 
             # For transient network issues, retry with a longer pause
             if attempt < MAX_RETRIES - 1:
-                time.sleep(1.0 * (attempt + 1))  # Increased from 0.4 to 1.0
+                time.sleep(1.0 * (attempt + 1))
                 continue
 
             # On final failure, return an error dict (don't cache failures)
@@ -95,7 +132,7 @@ def get_stock_data(ticker: str):
                 "success": False,
                 "ticker": ticker,
                 "name": ticker,
-                "error": "Data unavailable",
+                "error": "Throttled/Unavailable",
             }
 
     # After all retries failed

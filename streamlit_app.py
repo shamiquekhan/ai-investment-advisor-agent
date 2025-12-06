@@ -1,1161 +1,884 @@
-"""
-🚀 SHAMIQUKHAN STOCK ADVISOR - 100% ERROR-FREE VERSION
-✅ Multi-select stocks ✓ Custom tickers ✓ FREE AI Analysis
-✅ News + Sentiment ✓ Health Scoring ✓ Risk Analysis
+"""AI Investment Advisor - Rich UI with Defensive Data Handling
+
+Features
+--------
+- Zero/NaN prices are skipped (no $0.00 crashes)
+- Missing columns handled defensively
+- Sequential fetching with small delay to ease rate limits
+- 1-hour caching via st.cache_data
+- Multi-provider friendly (uses project helpers when available)
+
+Run:
+    streamlit run streamlit_app.py
 """
 
-import random
+from __future__ import annotations
+
 import time
 from datetime import datetime
+from typing import Any, Dict, Iterable, List
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
-import streamlit.components.v1 as components
 
-from cache_manager import clear_cache
-from data_sources import get_demo_stock, get_stock_data, get_stocks_parallel
-from multi_provider import (
-    get_stock_data_multi, 
-    get_stocks_parallel_multi, 
-    validate_api_keys,
-    get_provider_status,
-    get_cache_stats,
-    clear_cache as clear_multi_cache
-)
-from scoring import calculate_ai_score, get_recommendation
-from health_scoring import calculate_health_score, calculate_volatility_risk
-from news_sentiment import fetch_stock_news, calculate_overall_sentiment
+# Page config must be the first Streamlit call
+st.set_page_config(page_title="AI Investment Advisor", page_icon="💼", layout="wide")
 
-# Page config
-st.set_page_config(
-    page_title="AI Investment Advisor | Professional Market Analysis",
-    page_icon="💼",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+# --- Optional project imports with safe fallbacks ---
+try:
+    from data_sources import get_demo_stock, get_stocks_parallel
+except Exception:  # pragma: no cover
+    def get_demo_stock(ticker: str) -> Dict[str, Any]:
+        return {
+            "ticker": ticker,
+            "name": ticker,
+            "price": 100.0,
+            "change": 0.0,
+            "rsi": 50,
+            "pe": "N/A",
+            "marketCap": 0.0,
+            "dividend": 0.0,
+            "sector": "Unknown",
+            "success": True,
+        }
 
-# Nothing-inspired Minimal Tech Theme (Ndot + Lettera Mono)
-st.markdown("""
-<style>
-@font-face {
-    font-family: 'Ndot';
-    src: url('https://intl.nothing.tech/cdn/shop/t/4/assets/Ndot-55.otf?v=18522138017450180331657461025') format('opentype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
+    def get_stocks_parallel(tickers: Iterable[str]) -> List[Dict[str, Any]]:
+        return [get_demo_stock(t) for t in tickers]
 
-@font-face {
-    font-family: 'LetteraMono';
-    src: url('https://intl.nothing.tech/cdn/shop/t/4/assets/LetteraMonoLL-Regular.otf?v=71080347982022511271688898930') format('opentype');
-    font-weight: 400;
-    font-style: normal;
-    font-display: swap;
-}
+# Import local data manager for robust fallback
+try:
+    from local_data import get_prices_with_fallback, cleanup_old_snapshots, load_static_prices
+    LOCAL_DATA_AVAILABLE = True
+except Exception:  # pragma: no cover
+    LOCAL_DATA_AVAILABLE = False
+    def get_prices_with_fallback(tickers, api_fetch_func, max_cache_age_hours=24):
+        return api_fetch_func(tickers)
+    def cleanup_old_snapshots(max_age_days=7):
+        pass
+    def load_static_prices():
+        return {}
 
-@font-face {
-    font-family: 'LetteraMonoCond';
-    src: url('https://intl.nothing.tech/cdn/shop/t/4/assets/LetteraMonoLLCondLight-Regular.otf?v=165587148734230230191663851208') format('opentype');
-    font-weight: 300;
-    font-style: normal;
-    font-display: swap;
-}
+try:
+    from multi_provider import (
+        get_stocks_parallel_multi,
+        validate_api_keys,
+        get_cache_stats,
+        clear_cache as clear_multi_cache,
+    )
+except Exception:  # pragma: no cover
+    def get_stocks_parallel_multi(tickers: Iterable[str], max_workers: int = 3) -> Dict[str, Dict[str, Any]]:
+        return {t: get_demo_stock(t) for t in tickers}
 
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;600;700&display=swap');
+    def validate_api_keys():
+        return {"finnhub": False, "alpha_vantage": False}
 
-:root {
-    --bg-main: #FFFFFF;
-    --bg-panel: #FAFAFA;
-    --text-primary: #000000;
-    --text-secondary: #666666;
-    --accent-red: #D71921;
-    --border-color: rgba(0, 0, 0, 0.08);
-    --hover-bg: rgba(0, 0, 0, 0.02);
-}
+    def get_cache_stats():
+        return {"total_files": 0, "total_size_mb": 0.0, "by_provider": {}}
 
-* {
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
+    def clear_multi_cache():
+        return None
 
-.stApp {
-    background: #FFFFFF;
-    color: #000000;
-    font-family: 'Ndot', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
+try:
+    from news_sentiment import fetch_stock_news, calculate_overall_sentiment
+except Exception:  # pragma: no cover
+    def fetch_stock_news(ticker: str, max_articles: int = 5, use_ml: bool = False):
+        return []
 
-.main-header {
-    font-family: 'Ndot', sans-serif;
-    font-size: 3.5rem !important;
-    font-weight: 400 !important;
-    letter-spacing: 0.18em;
-    color: #000000;
-    text-align: center;
-    margin: 3rem 0 1.5rem 0;
-    padding: 0;
-    text-transform: uppercase;
-    line-height: 1.2;
-    background-image: radial-gradient(circle, #000000 52%, transparent 55%);
-    background-size: 4.5px 4.5px;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: fadeInDown 0.6s ease-out;
-}
+    def calculate_overall_sentiment(articles, use_ml: bool = False):  # noqa: ANN001
+        return {"score": 0.0, "label": "🟡 Neutral"}
 
-@keyframes fadeInDown {
-    from { opacity: 0; transform: translateY(-18px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+try:
+    from ml_models import check_ml_availability, preload_models
+    ML_AVAILABLE = True
+except Exception:  # pragma: no cover
+    ML_AVAILABLE = False
+    def check_ml_availability():
+        return {"transformers_installed": False}
+    def preload_models():
+        pass
 
-.subtitle {
-    font-family: 'Ndot', sans-serif;
-    font-size: 0.85rem;
-    color: #666666;
-    text-align: center;
-    letter-spacing: 0.12em;
-    font-weight: 400;
-    margin-bottom: 1rem;
-    text-transform: uppercase;
-    animation: fadeIn 0.8s ease-out 0.2s both;
-}
+try:
+    from scoring import calculate_ai_score, get_recommendation
+except Exception:  # pragma: no cover
+    def calculate_ai_score(data, health_score=50, sentiment_score=0.0):  # noqa: ANN001
+        return 5.0
 
-@keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 0.9; }
-}
+    def get_recommendation(score, **kwargs):  # noqa: ANN001
+        if score >= 7:
+            rec = "STRONG BUY"
+        elif score >= 5:
+            rec = "HOLD"
+        else:
+            rec = "SELL"
+        return {"recommendation": rec, "confidence": "Medium", "explanation": "Fallback recommendation"}
 
-.market-ticker {
-    font-family: 'LetteraMono', monospace;
-    font-size: 0.7rem;
-    color: #D71921;
-    text-align: center;
-    letter-spacing: 0.15em;
-    margin: 0.5rem 0 3rem 0;
-    text-transform: uppercase;
-    font-weight: 400;
-}
+try:
+    from health_scoring import calculate_health_score, calculate_volatility_risk
+except Exception:  # pragma: no cover
+    def calculate_health_score(data):
+        return {"score": 50, "grade": "C", "breakdown": {}, "explanation": "Health scoring unavailable"}
 
-.dot-matrix {
-    background-image: radial-gradient(circle, currentColor 60%, transparent 62%);
-    background-size: 7px 7px;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-fill-color: transparent;
-    text-shadow: 0 10px 26px var(--shadow);
-}
+    def calculate_volatility_risk(data):
+        return {"score": 5, "label": "🟡 Moderate Risk", "explanation": "Risk scoring unavailable"}
 
-.report-title {
-    font-family: 'Ndot', 'Noto Sans', sans-serif;
-    letter-spacing: 0.12em;
-    color: #F6F4E8;
-    background-image: radial-gradient(circle, currentColor 58%, transparent 60%);
-    background-size: 6px 6px;
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    text-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
-}
 
-.report-subhead {
-    color: #D6D2C7;
-    opacity: 0.9;
-}
+# --- Helpers ---
+def safe_float(x: Any, default: float = float("nan")) -> float:
+    try:
+        if x is None:
+            return default
+        f = float(x)
+        if f != f:  # NaN
+            return default
+        return f
+    except Exception:
+        return default
 
-.report-copy {
-    color: #F3F1E7;
-}
 
-.report-muted {
-    color: #CAC6BB;
-}
+def is_valid_price(x: Any) -> bool:
+    f = safe_float(x, default=float("nan"))
+    return not (f != f or f <= 0)
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.6; }
-}
 
-.stock-selector {
-    background: #FAFAFA;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    padding: 2.5rem;
-    border-radius: 0;
-    margin: 2rem 0;
-    box-shadow: none;
-    animation: slideUp 0.5s ease-out;
-}
+def format_price(x: Any) -> str:
+    return f"${safe_float(x):,.2f}" if is_valid_price(x) else "N/A"
 
-@keyframes slideUp {
-    from { opacity: 0; transform: translateY(26px); }
-    to { opacity: 1; transform: translateY(0); }
-}
 
-.stButton > button {
-    font-family: 'Ndot', sans-serif;
-    background: #D71921 !important;
-    color: #FFFFFF !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 0 !important;
-    padding: 1rem 2.5rem !important;
-    font-size: 0.85rem !important;
-    font-weight: 400 !important;
-    letter-spacing: 0.12em !important;
-    text-transform: uppercase !important;
-    box-shadow: none !important;
-    transition: all 0.2s ease !important;
-    position: relative;
-    overflow: hidden;
-}
+def format_change(x: Any) -> str:
+    f = safe_float(x, default=float("nan"))
+    if f != f:
+        return "N/A"
+    sign = "+" if f >= 0 else ""
+    return f"{sign}{f:.2f}%"
 
-.stButton > button::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    transform: translate(-50%, -50%);
-    transition: width 0.6s, height 0.6s;
-}
 
-.stButton > button:hover::before { width: 280px; height: 280px; }
-
-.stButton > button:hover {
-    background: #B01519 !important;
-    border-color: rgba(255, 255, 255, 0.2) !important;
-    transform: translateY(-1px);
-}
-
-.stButton > button:active { transform: translateY(-1px) scale(0.99); }
-
-div[data-testid="stMetric"] {
-    background: #FAFAFA;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0;
-    padding: 1.5rem !important;
-    box-shadow: none;
-}
-
-div[data-testid="stMetric"]:hover {
-    background: #F5F5F5;
-    border-color: rgba(0, 0, 0, 0.12);
-    transform: none;
-}
-
-div[data-testid="stMetricValue"] {
-    font-family: 'Ndot', sans-serif;
-    color: #000000 !important;
-    font-size: 2rem !important;
-    font-weight: 400 !important;
-    letter-spacing: 0;
-}
-
-div[data-testid="stMetricDelta"] {
-    font-family: 'LetteraMono', monospace;
-    font-weight: 400 !important;
-    font-size: 0.875rem !important;
-}
-
-.metric-card {
-    background: #FAFAFA;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-radius: 0;
-    padding: 1.5rem;
-    box-shadow: none;
-}
-
-.metric-card:hover { 
-    background: #F5F5F5;
-    border-color: rgba(0, 0, 0, 0.12);
-}
-
-.stTextInput input, .stSelectbox select, .stMultiSelect {
-    background: #FFFFFF !important;
-    color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.12) !important;
-    border-radius: 0 !important;
-    font-family: 'Ndot', sans-serif !important;
-    font-size: 0.875rem !important;
-    padding: 0.75rem 1rem !important;
-    box-shadow: none !important;
-}
-
-.stTextInput input:focus, .stSelectbox select:focus, .stMultiSelect:focus-within {
-    border: 1px solid rgba(215, 25, 33, 0.5) !important;
-    box-shadow: none !important;
-    outline: none !important;
-    background: #FFFFFF !important;
-}
-
-.stDataFrame {
-    background: #FAFAFA !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    border-radius: 0 !important;
-    box-shadow: none !important;
-    overflow: hidden;
-}
-
-.streamlit-expanderHeader {
-    background: #FAFAFA !important;
-    color: #000000 !important;
-    border: 1px solid rgba(0, 0, 0, 0.08) !important;
-    border-radius: 0 !important;
-    font-family: 'Ndot', sans-serif !important;
-    padding: 1rem 1.5rem !important;
-}
-
-.streamlit-expanderHeader:hover { 
-    background: #F5F5F5 !important;
-    border-color: rgba(215, 25, 33, 0.3) !important; 
-}
-
-.footer {
-    background: #FAFAFA;
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    border-top: 2px solid #D71921;
-    border-radius: 0;
-    padding: 3rem;
-    margin-top: 4rem;
-    box-shadow: none;
-}
-
-.footer h3 {
-    font-family: 'Ndot', sans-serif;
-    color: #000000;
-    letter-spacing: 0.08em;
-}
-
-h1, h2, h3, h4, h5, h6 { font-family: 'Ndot', sans-serif !important; color: #000000 !important; font-weight: 400 !important; letter-spacing: 0.08em !important; text-transform: uppercase !important; }
-
-p, span, div, label { font-family: 'Ndot', sans-serif !important; font-size: 0.875rem !important; color: #666666 !important; }
-
-hr { border: none; height: 1px; background: rgba(0, 0, 0, 0.08); margin: 3rem 0; }
-
-.stCheckbox { color: #000000 !important; }
-.stCheckbox > label { font-family: 'Ndot', sans-serif; font-size: 0.875rem; font-weight: 400; color: #666666 !important; }
-
-.stAlert { 
-    background: rgba(215, 25, 33, 0.1) !important; 
-    border-left: 3px solid #D71921 !important; 
-    border-radius: 0 !important; 
-    box-shadow: none !important;
-    color: #000000 !important;
-}
-
-.stProgress > div > div { 
-    background: #D71921 !important; 
-    border-radius: 0 !important; 
-    box-shadow: none !important; 
-}
-
-.stSpinner > div { border-color: #D71921 !important; }
-
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #FAFAFA; border-radius: 0; }
-::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.15); border-radius: 0; border: 2px solid #FAFAFA; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
-</style>
-""", unsafe_allow_html=True)
-
-# === MAIN APPLICATION ===
-st.markdown('<h1 class="main-header">AI Investment Advisor</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Professional Market Analysis • Real-Time Data • AI-Powered Insights</p>', unsafe_allow_html=True)
-st.markdown('<p class="market-ticker">● LIVE • NYSE • NASDAQ • NSE • GLOBAL MARKETS</p>', unsafe_allow_html=True)
-
-# === STOCK SELECTION SECTION ===
-st.markdown('<div class="stock-selector">', unsafe_allow_html=True)
-
-col1, col2 = st.columns([3, 1])
-
-with col1:
-    st.markdown("### 📈 **SELECT STOCKS TO ANALYZE**")
+@st.cache_data(ttl=86400)  # 24-hour cache
+def fetch_sequential(tickers: List[str], use_multi: bool = True, delay: float = 0.5) -> List[Dict[str, Any]]:
+    """
+    Fetch data with robust multi-tier fallback:
+    1. Live API (cached 24h)
+    2. Daily snapshot file
+    3. Static CSV
+    4. Demo data
+    """
+    # Clean up old snapshots
+    cleanup_old_snapshots(max_age_days=7)
     
-    # Popular stocks (US + India)
-    popular_stocks = [
-        "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META",
-        "JPM", "UNH", "V", "PG", "JNJ", "HD", "MA", "NFLX",
-        "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ITC.NS"
-    ]
+    # Use local data manager with fallback chain
+    def api_fetch_wrapper(tickers_batch):
+        if use_multi:
+            try:
+                data_map = get_stocks_parallel_multi(tickers_batch, max_workers=2)
+                results = []
+                for t in tickers_batch:
+                    d = data_map.get(t)
+                    if d is None or not d.get('success') or d.get('price', 0) <= 0:
+                        # Try single fetch as backup
+                        fallback = get_stocks_parallel([t])
+                        d = fallback[0] if fallback else None
+                    if d:
+                        results.append(d)
+                    time.sleep(delay)  # Rate limiting
+                return results
+            except Exception as e:
+                print(f"⚠️ Multi-provider failed: {e}")
+        
+        # Single provider fallback
+        results = []
+        for t in tickers_batch:
+            try:
+                fetched = get_stocks_parallel([t])
+                if fetched and len(fetched) > 0:
+                    results.append(fetched[0])
+                time.sleep(delay)
+            except Exception as e:
+                print(f"⚠️ Single fetch failed for {t}: {e}")
+        return results
     
-    selected_stocks = st.multiselect(
-        "Popular stocks (Ctrl+click for multiple):",
-        popular_stocks,
-        default=["AAPL", "MSFT", "NVDA", "GOOGL"],
-        help="Hold Ctrl/Cmd to select multiple • Indian stocks: .NS suffix"
+    # Use robust fallback system
+    if LOCAL_DATA_AVAILABLE:
+        return get_prices_with_fallback(tickers, api_fetch_wrapper, max_cache_age_hours=24)
+    else:
+        # Legacy path without local data
+        return api_fetch_wrapper(tickers)
+
+
+def sanitize_results(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    clean: List[Dict[str, Any]] = []
+    for rec in items:
+        r = dict(rec or {})
+        r["ticker"] = (r.get("ticker") or r.get("symbol") or "UNK").upper()
+        r["name"] = r.get("name") or r["ticker"]
+        r["price"] = safe_float(r.get("price"))
+        r["change"] = safe_float(r.get("change"))
+        r["rsi"] = safe_float(r.get("rsi"), 50.0)
+        r["pe"] = r.get("pe", "N/A")
+        r["marketCap"] = safe_float(r.get("marketCap"), 0.0)
+        r["dividend"] = safe_float(r.get("dividend"), 0.0)
+        r["success"] = bool(r.get("success", True))
+        r["news_articles"] = r.get("news_articles") or []
+        r["health_grade"] = r.get("health_grade", "N/A")
+        r["sentiment_label"] = r.get("sentiment_label", "🟡 Neutral")
+        r["risk_label"] = r.get("risk_label", "🟡 Moderate Risk")
+        clean.append(r)
+    return clean
+
+
+# --- UI helpers ---
+def rating_from_score(score: float) -> str:
+    if score >= 7:
+        return "STRONG BUY"
+    if score >= 5:
+        return "HOLD"
+    return "SELL"
+
+
+def render_css():
+    st.markdown(
+        """
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Doto:wght@100..900&display=swap');
+        @font-face {
+            font-family: 'Ndot';
+            src: url('https://intl.nothing.tech/cdn/shop/t/4/assets/Ndot-55.otf?v=18522138017450180331657461025') format('opentype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        
+        :root {
+            --accent-1-50: #FF0000;
+            --accent-1-100: #E60000;
+            --accent-1-500: #D71921;
+            --accent-1-700: #B30000;
+            --accent-1-900: #800000;
+            --neutral-1-0: #FFFFFF;
+            --neutral-1-10: #F7F7F7;
+            --neutral-1-50: #F0F0F0;
+            --neutral-1-100: #E5E5E5;
+            --neutral-1-200: #CCCCCC;
+            --neutral-1-300: #B3B3B3;
+            --neutral-1-400: #999999;
+            --neutral-1-500: #808080;
+            --neutral-1-600: #666666;
+            --neutral-1-700: #4D4D4D;
+            --neutral-1-800: #333333;
+            --neutral-1-900: #1A1A1A;
+            --neutral-1-1000: #000000;
+            --neutral-2-500: #7A7A7A;
+        }
+        
+        .stApp {
+            background: var(--neutral-1-0);
+            color: var(--neutral-1-1000);
+            font-family: 'Ndot', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        
+        .main-header {
+            font-family: 'Doto', monospace;
+            font-size: 3.5rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            color: var(--accent-1-500);
+            text-align: center;
+            margin: 3rem 0 1.5rem 0;
+            text-transform: uppercase;
+            line-height: 1.2;
+            text-shadow: 0 0 20px rgba(215, 25, 33, 0.3);
+            animation: glitch 3s infinite;
+        }
+        
+        @keyframes glitch {
+            0%, 100% { text-shadow: 0 0 20px rgba(215, 25, 33, 0.3); }
+            50% { text-shadow: 2px 0 rgba(215, 25, 33, 0.5), -2px 0 rgba(0, 0, 0, 0.3); }
+        }
+        
+        .subtitle {
+            font-family: 'Doto', monospace;
+            font-size: 0.85rem;
+            color: var(--neutral-1-600);
+            text-align: center;
+            letter-spacing: 0.15em;
+            font-weight: 400;
+            margin-bottom: 2rem;
+            text-transform: uppercase;
+        }
+        
+        .card {
+            border: 1px solid var(--neutral-1-200);
+            padding: 1.2rem;
+            border-radius: 2px;
+            background: var(--neutral-1-10);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .card:hover {
+            background: var(--neutral-1-50);
+            border-color: var(--neutral-1-300);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+        
+        .card strong {
+            color: var(--neutral-1-1000);
+            font-family: 'Doto', monospace;
+            font-weight: 600;
+        }
+        
+        .stButton > button {
+            font-family: 'Doto', monospace;
+            background: var(--accent-1-500) !important;
+            color: var(--neutral-1-0) !important;
+            border: 1px solid var(--accent-1-700) !important;
+            border-radius: 2px !important;
+            padding: 1rem 2.5rem !important;
+            font-size: 0.85rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.12em !important;
+            text-transform: uppercase !important;
+            transition: all 0.2s ease !important;
+        }
+        
+        .stButton > button:hover {
+            background: var(--accent-1-700) !important;
+            border-color: var(--accent-1-900) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(215, 25, 33, 0.3);
+        }
+        
+        div[data-testid="stMetric"] {
+            background: var(--neutral-1-10);
+            border: 1px solid var(--neutral-1-200);
+            border-radius: 2px;
+            padding: 1.5rem !important;
+        }
+        
+        div[data-testid="stMetric"]:hover {
+            background: var(--neutral-1-50);
+            border-color: var(--neutral-1-300);
+        }
+        
+        div[data-testid="stMetricValue"] {
+            font-family: 'Doto', monospace;
+            color: var(--neutral-1-1000) !important;
+            font-size: 2rem !important;
+            font-weight: 600 !important;
+        }
+        
+        .stTextInput input, .stSelectbox select, .stMultiSelect {
+            background: var(--neutral-1-0) !important;
+            color: var(--neutral-1-1000) !important;
+            border: 1px solid var(--neutral-1-300) !important;
+            border-radius: 2px !important;
+            font-family: 'Ndot', sans-serif !important;
+            font-size: 0.875rem !important;
+            padding: 0.75rem 1rem !important;
+        }
+        
+        .stTextInput input:focus, .stSelectbox select:focus, .stMultiSelect:focus-within {
+            border: 1px solid var(--accent-1-500) !important;
+            outline: none !important;
+            box-shadow: 0 0 0 2px rgba(215, 25, 33, 0.1);
+        }
+        
+        .stDataFrame {
+            background: var(--neutral-1-10) !important;
+            border: 1px solid var(--neutral-1-200) !important;
+            border-radius: 2px !important;
+        }
+        
+        .streamlit-expanderHeader {
+            background: var(--neutral-1-10) !important;
+            color: var(--neutral-1-1000) !important;
+            border: 1px solid var(--neutral-1-200) !important;
+            border-radius: 2px !important;
+            font-family: 'Doto', monospace !important;
+            padding: 1rem 1.5rem !important;
+            font-weight: 600 !important;
+        }
+        
+        .streamlit-expanderHeader:hover {
+            background: var(--neutral-1-50) !important;
+            border-color: var(--accent-1-500) !important;
+        }
+        
+        .footer {
+            background: var(--neutral-1-10);
+            border: 1px solid var(--neutral-1-200);
+            border-top: 2px solid var(--accent-1-500);
+            border-radius: 2px;
+            padding: 3rem;
+            margin-top: 4rem;
+        }
+        
+        h1, h2, h3, h4, h5, h6 {
+            font-family: 'Doto', monospace !important;
+            color: var(--neutral-1-1000) !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.08em !important;
+            text-transform: uppercase !important;
+        }
+        
+        p, span, div, label {
+            font-family: 'Ndot', sans-serif !important;
+            font-size: 0.875rem !important;
+            color: var(--neutral-1-600) !important;
+        }
+        
+        hr {
+            border: none;
+            height: 1px;
+            background: var(--neutral-1-200);
+            margin: 3rem 0;
+        }
+        
+        /* Status indicators */
+        .stSuccess {
+            background: rgba(76, 175, 80, 0.1) !important;
+            border-left: 3px solid #4CAF50 !important;
+        }
+        
+        .stWarning {
+            background: rgba(255, 152, 0, 0.1) !important;
+            border-left: 3px solid #FF9800 !important;
+        }
+        
+        .stError {
+            background: rgba(244, 67, 54, 0.1) !important;
+            border-left: 3px solid #F44336 !important;
+        }
+        
+        .stInfo {
+            background: rgba(33, 150, 243, 0.1) !important;
+            border-left: 3px solid #2196F3 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
-with col2:
-    st.markdown("### ➕ **Custom**")
-    custom_ticker = st.text_input(
-        "Ticker", 
-        placeholder="BTC-USD, RELIANCE.NS", 
-        help="e.g., BTC-USD, RELIANCE.NS, TATAMOTORS.NS"
-    ).strip().upper()
-    
-    if custom_ticker and custom_ticker not in selected_stocks:
-        selected_stocks.append(custom_ticker)
 
-# === MULTI-PROVIDER DATA SOURCES ===
-st.markdown('<div style="background: #FAFAFA; padding: 2rem; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 0; margin-bottom: 2rem;">', unsafe_allow_html=True)
-st.markdown("### ⚡ **MULTI-PROVIDER DATA ENGINE**")
-
-# Show provider status
-api_keys = validate_api_keys()
-cache_stats = get_cache_stats()
-
-col_api1, col_api2, col_api3 = st.columns(3)
-with col_api1:
-    st.markdown("**Yahoo Finance**")
-    st.success("✅ Active (1hr cache)")
-    st.caption(f"📦 {cache_stats['by_provider'].get('yfinance', 0)} cached")
-
-with col_api2:
-    st.markdown("**Finnhub**")
-    if api_keys['finnhub']:
-        st.success("✅ Active (5min cache)")
-        st.caption(f"📦 {cache_stats['by_provider'].get('finnhub', 0)} cached")
-    else:
-        st.warning("⚠️ Not configured")
-        with st.expander("ℹ️ Setup Finnhub (FREE)"):
-            st.markdown("""
-            1. Register at [finnhub.io/register](https://finnhub.io/register)
-            2. Get your free API key (60 calls/min)
-            3. Add to Streamlit secrets or environment:
-            ```
-            FINNHUB_API_KEY=your_key_here
-            ```
-            """)
-
-with col_api3:
-    st.markdown("**Alpha Vantage**")
-    if api_keys['alpha_vantage']:
-        st.success("✅ Active (1hr cache)")
-        st.caption(f"📦 {cache_stats['by_provider'].get('alphavantage', 0)} cached")
-    else:
-        st.warning("⚠️ Not configured")
-        with st.expander("ℹ️ Setup Alpha Vantage (FREE)"):
-            st.markdown("""
-            1. Get free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key)
-            2. Add to Streamlit secrets or environment:
-            ```
-            ALPHA_VANTAGE_API_KEY=your_key_here
-            ```
-            """)
-
-# Data strategy explanation
-st.info("""
-**💡 Smart Load Distribution:**
-- **Yahoo Finance**: Historical prices, fundamentals (cached 1 hour)
-- **Finnhub**: Real-time quotes (cached 5 minutes) - *Optional*
-- **Alpha Vantage**: Backup data (cached 1 hour) - *Optional*
-
-All providers stay within FREE tier limits. Cache eliminates 429 errors!
-""")
-
-# Toggle multi-provider mode
-use_multi_provider = st.checkbox(
-    "🚀 Enable Multi-Provider Mode (recommended)",
-    value=True,
-    help="Uses multiple free APIs to eliminate rate limits"
-)
-
-# Fallback toggle
-use_demo_if_rate_limited = st.checkbox(
-    "Use sample data if live data is throttled (Yahoo 429)",
-    value=True
-)
-
-# Cache controls
-col_cache1, col_cache2, col_cache3 = st.columns([2, 1, 1])
-with col_cache1:
-    st.caption(f"💾 Cache: {cache_stats['total_files']} files ({cache_stats['total_size_mb']:.2f} MB)")
-with col_cache2:
-    if st.button("🗑️ Clear Cache"):
-        clear_cache()
-        clear_multi_cache()
-        st.success("Cache cleared!")
-        st.rerun()
-with col_cache3:
-    if st.button("📊 Refresh Stats"):
-        st.rerun()
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# === INVESTOR PROFILE ===
-with st.expander("👤 **Investor Profile** (Optional for Portfolio)", expanded=False):
-    col1, col2 = st.columns(2)
-    with col1:
-        age = st.number_input("Age", 18, 100, 30, help="For risk calculation")
-        investment_amount = st.number_input("Investment Amount ($)", 1000, 10000000, 50000, step=1000)
-    with col2:
-        risk_tolerance = st.selectbox("Risk Tolerance", ["Conservative", "Moderate", "Aggressive"])
-        goal = st.text_input("Goal", placeholder="Retirement, House, etc.")
-
-# === ANALYZE BUTTON ===
-if st.button("🚀 **ANALYZE SELECTED STOCKS**", type="primary", use_container_width=True):
-    if len(selected_stocks) == 0:
-        st.error("⚠️ Select at least 1 stock!")
-    elif len(selected_stocks) > 15:
-        st.error("⚠️ Maximum 15 stocks (for performance)")
-    else:
-        # Remove duplicates
-        selected_stocks = list(dict.fromkeys(selected_stocks))
-        st.session_state.selected_stocks = selected_stocks
-        st.session_state.analyze = True
-        st.session_state.amount = investment_amount
-        st.session_state.risk = risk_tolerance
-        st.rerun()
-
-# === RESULTS SECTION ===
-if 'analyze' in st.session_state and st.session_state.analyze:
-    selected_stocks = st.session_state.selected_stocks
-    amount = st.session_state.get('amount', 50000)
-    risk_tolerance = st.session_state.get('risk', 'Moderate')
-    
-    st.success(f"✅ Analyzing **{len(selected_stocks)} stocks** live...")
-    
-    # Store multi-provider preference
-    use_multi = st.session_state.get('use_multi_provider', use_multi_provider)
-    
-    # === DATA FETCHING (PARALLEL WITH MULTI-PROVIDER) ===
-    with st.spinner(f"📊 Fetching data for {len(selected_stocks)} stocks..."):
-        if use_multi:
-            # Use multi-provider system (Yahoo + Finnhub + Alpha Vantage)
-            st.info("🚀 Using multi-provider mode (Yahoo + Finnhub + Alpha Vantage)")
-            stock_data_dict = get_stocks_parallel_multi(selected_stocks, max_workers=3)
-            
-            # Convert to list format for compatibility
-            stock_data_list = []
-            for ticker, data in stock_data_dict.items():
-                stock_data_list.append({
-                    'ticker': ticker,
-                    'success': True,
-                    **data
-                })
-            
-            # Also try old method as fallback for missing stocks
-            if len(stock_data_list) < len(selected_stocks):
-                missing = set(selected_stocks) - {d['ticker'] for d in stock_data_list}
-                st.warning(f"⚠️ {len(missing)} stocks failed multi-provider, trying fallback...")
-                fallback_data = get_stocks_parallel(list(missing))
-                stock_data_list.extend(fallback_data)
-        else:
-            # Use original single-provider (Yahoo only)
-            st.info("📡 Using single-provider mode (Yahoo Finance only)")
-            stock_data_list = get_stocks_parallel(selected_stocks)
+def render_top_cards(successful: List[Dict[str, Any]]):
+    if not successful:
+        return
+    st.markdown("## 🏆 Top Recommendations")
+    cols = st.columns(3)
+    for i, res in enumerate(successful[:9]):
+        col = cols[i % 3]
+        price_display = format_price(res.get("price"))
+        change_display = format_change(res.get("change"))
+        score = safe_float(res.get("score"), 0.0)
+        rating = rating_from_score(score)
         
-        # Convert list to dictionary for easier access
-        stock_data = {data['ticker']: data for data in stock_data_list if data.get('success')}
+        # Data source indicator
+        source = res.get('source', 'live_api')
+        source_icons = {
+            'live_api': '🟢',
+            'daily_snapshot': '📂',
+            'static_csv': '📋',
+            'demo': '⚠️'
+        }
+        source_icon = source_icons.get(source, '🟢')
+        source_tooltip = {
+            'live_api': 'Live API',
+            'daily_snapshot': 'Daily Cache',
+            'static_csv': 'Static Data',
+            'demo': 'Demo Data'
+        }.get(source, 'Live API')
         
-        st.success(f"✅ Fetched {len(stock_data)}/{len(selected_stocks)} stocks successfully!")
-        
-        # Show cache hit info for multi-provider
-        if use_multi:
-            cache_stats_after = get_cache_stats()
-            st.caption(f"💾 Cache efficiency: {cache_stats_after['total_files']} files total")
-        
-    
-    # === ANALYSIS WITH ENHANCED FEATURES ===
-    analysis_results = []
-    total_return = 0.0
-    
-    # Fetch news and calculate health scores (can be done in parallel with stock data)
-    with st.spinner("📰 Fetching news and analyzing sentiment..."):
-        news_data = {}
-        health_data = {}
-        for ticker in selected_stocks:
-            data = stock_data.get(ticker, {})
-            if data.get('success'):
-                # Fetch news and sentiment
-                articles = fetch_stock_news(ticker, max_articles=5)
-                sentiment = calculate_overall_sentiment(articles)
-                news_data[ticker] = {'articles': articles, 'sentiment': sentiment}
-                
-                # Calculate health score
-                health = calculate_health_score(data)
-                volatility_risk = calculate_volatility_risk(data)
-                health_data[ticker] = {'health': health, 'risk': volatility_risk}
-    
-    for ticker, data in stock_data.items():
-        # Get enhanced metrics
-        news_info = news_data.get(ticker, {'sentiment': {'score': 0.0, 'label': '🟡 No News'}})
-        health_info = health_data.get(ticker, {
-            'health': {'score': 50, 'grade': 'C'}, 
-            'risk': {'score': 5, 'label': '🟡 Moderate Risk'}
-        })
-        
-        sentiment_score = news_info['sentiment']['score']
-        health_score = health_info['health']['score']
-        
-        # Calculate enhanced AI score
-        score = calculate_ai_score(data, health_score, sentiment_score)
-        
-        # Get comprehensive recommendation
-        recommendation_data = get_recommendation(
-            score,
-            health_grade=health_info['health']['grade'],
-            sentiment_label=news_info['sentiment']['label'],
-            risk_label=health_info['risk']['label']
-        )
-        
-        analysis_results.append({
-            'ticker': data.get('ticker', ticker),
-            'name': data.get('name', ticker)[:30] + "..." if len(data.get('name', '')) > 30 else data.get('name', ticker),
-            'score': score,
-            'recommendation': recommendation_data['recommendation'],
-            'confidence': recommendation_data['confidence'],
-            'explanation': recommendation_data['explanation'],
-            'price': data.get('price', 0),
-            'change': data.get('change', 0),
-            'pe': data.get('pe', 'N/A'),
-            'rsi': data.get('rsi', 50),
-            'marketCap': data.get('marketCap', 0),
-            'dividend': data.get('dividend', 0),
-            'sector': data.get('sector', 'Unknown'),
-            'success': data.get('success', False),
-            'health_score': health_score,
-            'health_grade': health_info['health']['grade'],
-            'sentiment_score': sentiment_score,
-            'sentiment_label': news_info['sentiment']['label'],
-            'risk_label': health_info['risk']['label'],
-            'news_articles': news_info.get('articles', [])
-        })
-    
-    # Sort: successful + high score first
-    analysis_results.sort(key=lambda x: (x['success'], x['score']), reverse=True)
-    
-    successful_results = [r for r in analysis_results if r['success']]
-
-    # If everything failed and user allowed demo, fill with demo data (up to 5 tickers)
-    if not successful_results and use_demo_if_rate_limited:
-        demo_list = []
-        for t in selected_stocks[:5]:
-            demo_data = get_demo_stock(t)
-            demo_score = calculate_ai_score(demo_data, health_score=50, sentiment_score=0.0)
-            demo_rec = get_recommendation(demo_score, health_grade='C', sentiment_label='🟡 Neutral', risk_label='🟡 Moderate Risk')
-            demo_list.append({
-                **demo_data,
-                'score': demo_score,
-                'recommendation': demo_rec['recommendation'],
-                'confidence': demo_rec['confidence'],
-                'explanation': demo_rec['explanation'],
-                'health_score': 50,
-                'health_grade': 'C',
-                'sentiment_score': 0.0,
-                'sentiment_label': '🟡 Neutral',
-                'risk_label': '🟡 Moderate Risk',
-                'news_articles': []
-            })
-        successful_results = demo_list
-        st.info("Showing sample data due to API rate limits (Yahoo 429). Try fewer tickers or wait a minute.")
-
-    # Guarantee all required fields exist for downstream UI
-    for res in successful_results:
-        if 'score' not in res:
-            res['score'] = calculate_ai_score(res, health_score=res.get('health_score', 50), sentiment_score=res.get('sentiment_score', 0.0))
-        if 'recommendation' not in res or isinstance(res['recommendation'], dict):
-            rec_data = get_recommendation(res['score'], 
-                                         health_grade=res.get('health_grade', 'C'),
-                                         sentiment_label=res.get('sentiment_label', '🟡 Neutral'),
-                                         risk_label=res.get('risk_label', '🟡 Moderate Risk'))
-            res['recommendation'] = rec_data['recommendation']
-            res['confidence'] = rec_data.get('confidence', 'N/A')
-            res['explanation'] = rec_data.get('explanation', 'No analysis available')
-        
-        # Ensure all other fields exist
-        res.setdefault('health_grade', 'N/A')
-        res.setdefault('sentiment_label', '🟡 Neutral')
-        res.setdefault('risk_label', '🟡 Moderate Risk')
-        res.setdefault('news_articles', [])
-        res.setdefault('confidence', 'N/A')
-        res.setdefault('explanation', 'No analysis available')
-    
-    # Final safety: drop any results without a score (shouldn't happen now, but defensive)
-    successful_results = [r for r in successful_results if 'score' in r]
-    
-    # === TOP RECOMMENDATIONS ===
-    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 2rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>🏆 TOP INVESTMENT RECOMMENDATIONS</h2>", unsafe_allow_html=True)
-    
-    if successful_results:
-        cols = st.columns(3)
-        for i, result in enumerate(successful_results[:9]):
-            score_val = result.get('score', 0)
-            col_idx = i % 3
-            with cols[col_idx]:
-                # Wall Street color coding
-                if score_val >= 7:
-                    rating = "STRONG BUY"
-                    rating_color = "var(--copperwood)"
-                    border_color = "var(--copperwood)"
-                elif score_val >= 5:
-                    rating = "HOLD"
-                    rating_color = "var(--sunlit-clay)"
-                    border_color = "var(--sunlit-clay)"
-                else:
-                    rating = "SELL"
-                    rating_color = "var(--olive-leaf)"
-                    border_color = "var(--olive-leaf)"
-                
-                trend_symbol = "▲" if result['change'] >= 0 else "▼"
-                trend_color = "var(--copperwood)" if result['change'] >= 0 else "var(--olive-leaf)"
-                
-                # Bloomberg-style card
-                st.markdown(f"""
-                <div style='background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.06) 100%); 
-                border-left: 4px solid {border_color}; border-radius: 12px; padding: 1.2rem; margin: 0.5rem 0;
-                box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);'>
-                    <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;'>
-                        <p style='font-family: Ndot, "Noto Sans", sans-serif; color: var(--cornsilk); font-size: 1.25rem; font-weight: 700; margin: 0; letter-spacing: 0.06em;'>
-                            {result['ticker']}
-                        </p>
-                        <span style='font-family: "Noto Sans", sans-serif; background: {rating_color}; color: var(--cornsilk); 
-                        padding: 0.3rem 0.8rem; border-radius: 4px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.08em;'>
-                            {rating}
-                        </span>
+        with col:
+            st.markdown(
+                f"""
+                <div class='card'>
+                    <div style='display:flex;justify-content:space-between;align-items:center;'>
+                        <strong>{res.get('ticker','')} {source_icon}</strong>
+                        <span style='font-size:0.8rem;'>{rating}</span>
                     </div>
-                    <p style='font-family: "LetteraMono", monospace; color: var(--sunlit-clay); font-size: 2rem; font-weight: 600; margin: 0.5rem 0;'>
-                        ${result['price']:.2f}
-                    </p>
-                    <p style='font-family: "LetteraMonoCond", monospace; color: {trend_color}; font-size: 1.05rem; font-weight: 500; margin: 0;'>
-                        {trend_symbol} {result['change']:.2f}%
-                    </p>
-                    <div style='margin-top: 0.8rem; padding-top: 0.8rem; border-top: 1px solid rgba(255,255,255,0.08);'>
-                        <div style='display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;'>
-                            <span style='font-family: "Noto Sans", sans-serif; color: var(--cornsilk); font-size: 0.85rem;'>
-                                Score: <strong style='color: var(--sunlit-clay); letter-spacing: 0.04em;'>{score_val:.1f}/10</strong>
-                            </span>
-                            <span style='font-family: "Noto Sans", sans-serif; color: var(--cornsilk); font-size: 0.85rem;'>
-                                Health: <strong style='font-family: "LetteraMono", monospace;'>{result.get('health_grade', 'N/A')}</strong>
-                            </span>
-                        </div>
-                        <div style='font-size: 0.75rem; color: rgba(255,255,255,0.6);'>
-                            {result.get('sentiment_label', '🟡 No News')}
-                        </div>
-                    </div>
+                    <p style='font-size:1.4rem;margin:0.4rem 0 0.2rem 0;'>{price_display}</p>
+                    <p style='margin:0;color:{'#16a34a' if res.get('change',0)>=0 else '#dc2626'}'>{change_display}</p>
+                    <p style='margin:0.4rem 0 0 0;color:#555;'>Score: {score:.1f}/10</p>
+                    <p style='margin:0;color:#777;font-size:0.7rem;'>Health: {res.get('health_grade','N/A')} • {source_tooltip}</p>
                 </div>
-                """, unsafe_allow_html=True)
-    
-    # === DETAILED ANALYSIS WITH NEWS ===
-    st.markdown("---")
-    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>📋 DETAILED STOCK ANALYSIS</h2>", unsafe_allow_html=True)
-    
-    if successful_results:
-        for result in successful_results:
-            # Color coding based on score
-            if result['score'] >= 7.5:
-                card_color = "rgba(34, 197, 94, 0.1)"  # Green
-                border_color = "#22c55e"
-            elif result['score'] >= 5.5:
-                card_color = "rgba(251, 191, 36, 0.1)"  # Yellow
-                border_color = "#fbbf24"
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_detailed(successful: List[Dict[str, Any]]):
+    if not successful:
+        return
+    st.markdown("## 📋 Detailed Stock Analysis")
+    for res in successful:
+        score = safe_float(res.get("score"), 0.0)
+        with st.expander(f"{res.get('ticker','')} — {res.get('name','')} | Score {score:.1f}/10"):
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Price", format_price(res.get("price")), format_change(res.get("change")))
+            c2.metric("AI Score", f"{score:.1f}/10")
+            c3.metric("Health", res.get("health_grade", "N/A"))
+            c4.metric("Sentiment", res.get("sentiment_label", "Neutral"))
+
+            st.markdown("**Investment Recommendation**")
+            st.write(res.get("recommendation", ""))
+            st.caption(res.get("explanation", ""))
+
+            articles = res.get("news_articles", [])
+            if articles:
+                st.markdown("**Recent News**")
+                for art in articles[:5]:
+                    st.write(f"- [{art.get('title','Untitled')}]({art.get('link','#')}) ({art.get('published','')})")
             else:
-                card_color = "rgba(239, 68, 68, 0.1)"  # Red
-                border_color = "#ef4444"
-            
-            with st.expander(f"📊 **{result['ticker']}** - {result['name']} | Score: **{result['score']:.1f}/10** {result['recommendation']}", expanded=False):
-                # Header with key metrics
-                st.markdown(f"""
-                <div style='background: {card_color}; border-left: 4px solid {border_color}; padding: 1rem; margin-bottom: 1rem; border-radius: 4px;'>
-                    <h3 style='margin: 0 0 0.5rem 0; color: #000000;'>{result['ticker']} - {result['name']}</h3>
-                    <p style='margin: 0; color: #666666; font-size: 0.9rem;'><strong>Sector:</strong> {result.get('sector', 'Unknown')} | <strong>Market Cap:</strong> ${result.get('marketCap', 0):.1f}B</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Metrics in columns
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("💰 Price", f"${result['price']:.2f}", f"{result['change']:+.2f}%")
-                    st.caption(f"P/E Ratio: **{result.get('pe', 'N/A')}**")
-                
-                with col2:
-                    st.metric("🎯 AI Score", f"{result['score']:.1f}/10")
-                    st.caption("Composite analysis score")
-                
-                with col3:
-                    st.metric("🏥 Health Grade", result.get('health_grade', 'N/A'))
-                    st.caption(f"Health Score: **{result.get('health_score', 0):.0f}/100**")
-                
-                with col4:
-                    st.metric("📰 Sentiment", result.get('sentiment_label', '🟡 Neutral').replace('🟢 ', '').replace('🔴 ', '').replace('🟡 ', ''))
-                    st.caption(f"Risk: **{result.get('risk_label', '🟡 Moderate Risk')}**")
-                
-                # Technical indicators
-                st.markdown("#### 📈 Technical Indicators")
-                tech_col1, tech_col2, tech_col3 = st.columns(3)
-                with tech_col1:
-                    rsi = result.get('rsi', 50)
-                    rsi_status = "Oversold" if rsi < 30 else ("Overbought" if rsi > 70 else "Neutral")
-                    st.write(f"**RSI:** {rsi:.1f} ({rsi_status})")
-                with tech_col2:
-                    st.write(f"**Volume:** {result.get('volume', 0):,.0f}")
-                with tech_col3:
-                    st.write(f"**Dividend Yield:** {result.get('dividend', 0):.2f}%")
-                
-                # Recommendation
-                st.markdown("#### 🎯 Investment Recommendation")
-                st.markdown(f"""
-                <div style='background: rgba(0,0,0,0.03); padding: 1rem; border-radius: 4px; border-left: 3px solid {border_color};'>
-                    <p style='margin: 0 0 0.5rem 0; font-size: 1.1rem;'><strong>{result['recommendation']}</strong> (Confidence: {result.get('confidence', 'N/A')})</p>
-                    <p style='margin: 0; color: #666666;'>{result.get('explanation', 'No analysis available')}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # News section
-                articles = result.get('news_articles', [])
-                if articles:
-                    st.markdown("#### 📰 Recent News & Sentiment")
-                    for i, article in enumerate(articles[:5], 1):
-                        sentiment_score = article.get('sentiment_score', 0)
-                        if sentiment_score > 0.2:
-                            sentiment_icon = "🟢"
-                            sentiment_text = "Positive"
-                        elif sentiment_score < -0.2:
-                            sentiment_icon = "🔴"
-                            sentiment_text = "Negative"
-                        else:
-                            sentiment_icon = "🟡"
-                            sentiment_text = "Neutral"
-                        
-                        st.markdown(f"""
-                        <div style='padding: 0.75rem; margin: 0.5rem 0; background: rgba(0,0,0,0.02); border-radius: 4px;'>
-                            <p style='margin: 0 0 0.25rem 0;'>{sentiment_icon} <strong><a href='{article.get('link', '#')}' target='_blank' style='color: #000000; text-decoration: none;'>{article.get('title', 'No title')}</a></strong></p>
-                            <p style='margin: 0; font-size: 0.85rem; color: #666666;'>{sentiment_text} sentiment ({sentiment_score:+.2f}) • {article.get('published', 'Unknown date')}</p>
-                        </div>
-                        """, unsafe_allow_html=True)
-                else:
-                    st.info("📭 No recent news available for this stock")
-    
-    # === ANALYSIS TABLE ===
-    st.markdown("---")
-    st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>📊 COMPREHENSIVE MARKET DATA</h2>", unsafe_allow_html=True)
-    
-    if successful_results:
-        df = pd.DataFrame(successful_results)
-        
-        # Select only columns that exist in the dataframe
-        display_columns = ['ticker', 'name', 'score', 'recommendation', 'price', 'change', 'rsi', 'pe']
-        
-        # Add optional columns if they exist
-        if 'health_grade' in df.columns:
-            display_columns.insert(3, 'health_grade')
-        if 'sentiment_label' in df.columns:
-            display_columns.append('sentiment_label')
+                st.info("No recent news available")
 
-        st.dataframe(
-            df[display_columns],
-            use_container_width=True,
-            column_config={
-                "score": st.column_config.NumberColumn("AI Score", format="%.1f", min_value=0, max_value=10),
-                "health_grade": "Health",
-                "change": st.column_config.NumberColumn("Change %", format="%.1f%%"),
-                "price": st.column_config.NumberColumn("Price", format="$%.0f"),
-                "sentiment_label": "News Sentiment"
-            },
-            hide_index=True
-        )
-    else:
-        st.warning("⚠️ No valid stock data (likely Yahoo rate limit). Try fewer tickers or wait a minute.")
-    
-    # === PORTFOLIO BUILDER ===
-    if len(successful_results) >= 2:
-        st.markdown("---")
-        st.markdown("<h2 class='dot-matrix' style='font-family: Ndot, \"Noto Sans\", sans-serif; color: var(--cornsilk); font-size: 1.8rem; font-weight: 700; text-align: center; margin: 2rem 0; border-bottom: 2px solid var(--accent); padding-bottom: 1rem; letter-spacing: 0.12em;'>💼 OPTIMIZED PORTFOLIO ALLOCATION</h2>", unsafe_allow_html=True)
-        
-        # Risk-based weights
+
+def render_table(successful: List[Dict[str, Any]]):
+    if not successful:
+        return
+    st.markdown("## 📊 Comprehensive Market Data")
+    df = pd.DataFrame(successful)
+
+    def _sanitize_price(x):
+        try:
+            xf = float(x)
+            if xf <= 0 or xf != xf:
+                return pd.NA
+            return xf
+        except Exception:
+            return pd.NA
+
+    if "price" in df.columns:
+        df["price"] = df["price"].apply(_sanitize_price)
+    if "change" in df.columns:
+        df["change"] = pd.to_numeric(df["change"], errors="coerce")
+
+    display_cols = ["ticker", "name", "score", "health_grade", "price", "change", "rsi", "pe"]
+    display_cols = [c for c in display_cols if c in df.columns]
+
+    st.dataframe(
+        df[display_cols],
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "score": st.column_config.NumberColumn("AI Score", format="%.1f", min_value=0, max_value=10),
+            "change": st.column_config.NumberColumn("Change %", format="%.2f%%"),
+            "price": st.column_config.NumberColumn("Price", format="$%.2f"),
+        },
+    )
+
+
+def render_portfolio(successful: List[Dict[str, Any]], amount: float, risk: str):
+    if len(successful) < 2:
+        return
+    st.markdown("## 💼 Optimized Portfolio Allocation")
+    weight_configs = {
+        "Conservative": [20, 20, 20, 20, 20],
+        "Moderate": [25, 25, 20, 15, 15],
+        "Aggressive": [30, 25, 20, 15, 10],
+    }
+    weights = weight_configs.get(risk, weight_configs["Moderate"])[: len(successful)]
+
+    cols = st.columns(min(3, len(successful)))
+    for col, res, w in zip(cols, successful[: len(cols)], weights):
+        allocation = amount * (w / 100)
+        ch = safe_float(res.get("change"), 0.0)
+        proj = ch * 1.1
+        with col:
+            st.markdown(
+                f"""
+                <div class='card' style='text-align:center;'>
+                    <p style='font-size:1.6rem;margin:0;'>{res.get('ticker','')}</p>
+                    <p style='margin:0.1rem 0;color:#666;'>{w}% allocation</p>
+                    <p style='font-size:1.4rem;margin:0.4rem 0;'>${allocation:,.0f}</p>
+                    <p style='margin:0;color:{'#16a34a' if proj>=0 else '#dc2626'}'>{proj:+.1f}%</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def render_charts(successful: List[Dict[str, Any]], amount: float, risk: str):
+    if not successful:
+        return
+    st.markdown("## 📈 Charts")
+    col1, col2 = st.columns(2)
+
+    with col1:
+        fig = go.Figure()
+        for res in successful[:8]:
+            fig.add_trace(
+                go.Bar(
+                    x=[res.get("ticker", "")],
+                    y=[safe_float(res.get("score"), 0.0)],
+                    text=[f"{safe_float(res.get('score'),0.0):.1f}"],
+                    textposition="outside",
+                )
+            )
+        fig.update_layout(title="AI Confidence Scores", yaxis=dict(range=[0, 10]))
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
         weight_configs = {
             "Conservative": [20, 20, 20, 20, 20],
             "Moderate": [25, 25, 20, 15, 15],
-            "Aggressive": [30, 25, 20, 15, 10]
+            "Aggressive": [30, 25, 20, 15, 10],
         }
-        weights = weight_configs.get(risk_tolerance, [25, 25, 20, 15, 15])[:len(successful_results)]
-        
-        portfolio_value = amount
-        total_return = 0.0
-        
-        portfolio_cols = st.columns(min(3, len(successful_results)))
-        
-        for i, (col, result, weight_pct) in enumerate(zip(portfolio_cols, successful_results[:5], weights)):
-            allocation = portfolio_value * (weight_pct / 100)
-            proj_return = result['change'] * 1.1  # Conservative projection
-            total_return += proj_return * weight_pct
-            
-            with col:
-                # Display with proper formatting
-                st.markdown(f"""
-                <div style='background: #FAFAFA; border: 1px solid #E0E0E0; border-radius: 8px; padding: 1.5rem; text-align: center;'>
-                    <p style='font-size: 1.8rem; font-weight: 700; margin: 0 0 0.3rem 0; color: #000000; font-family: "LetteraMono", monospace;'>
-                        {result['ticker']}
-                    </p>
-                    <p style='font-size: 0.9rem; color: #666666; margin: 0 0 1rem 0;'>
-                        ({weight_pct}% allocation)
-                    </p>
-                    <p style='font-size: 2rem; font-weight: 700; margin: 0 0 0.5rem 0; color: #000000;'>
-                        ${allocation:,.0f}
-                    </p>
-                    <p style='font-size: 1.1rem; color: {"#22c55e" if proj_return >= 0 else "#ef4444"}; font-weight: 600; margin: 0;'>
-                        {"↑" if proj_return >= 0 else "↓"} {proj_return:+.1f}%
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-        
-        # Portfolio summary
-        col1, col2, col3 = st.columns(3)
-        with col1: st.metric("📈 Expected Return", f"{total_return:.1f}%")
-        with col2: st.metric("💰 Total Invested", f"${amount:,.0f}")
-        with col3: st.metric("⚠️ Risk Level", risk)
-        
-        # === CHARTS - Wall Street Professional Theme ===
-        col_chart1, col_chart2 = st.columns(2)
-        
-        with col_chart1:
-            fig_scores = go.Figure()
-            # Nothing palette: deep reds + cotton neutrals
-            colors = ['#D71921', '#810100', '#630000', '#EDEBDD', '#BEBBB3', '#D71921', '#810100', '#EDEBDD']
-            
-            for i, result in enumerate(successful_results[:8]):
-                fig_scores.add_trace(go.Bar(
-                    x=[result['ticker']],
-                    y=[result['score']],
-                    marker_color=colors[i % len(colors)],
-                    marker_line_color='#2A2A2D',
-                    marker_line_width=1.8,
-                    text=f"{result['score']:.1f}",
-                    textposition="outside",
-                    textfont=dict(size=14, color='#EDEBDD', family='Noto Sans', weight=600),
-                    name=result['ticker'],
-                    hovertemplate='<b>%{x}</b><br>AI Score: %{y:.1f}/10<br>Rating: ' + 
-                                  ('Strong Buy' if result['score'] >= 7 else 'Hold' if result['score'] >= 5 else 'Sell') + 
-                                  '<extra></extra>'
-                ))
-            
-            fig_scores.update_layout(
-                title=dict(
-                    text="🏆 AI CONFIDENCE SCORES",
-                    font=dict(size=18, color='#D71921', family='Ndot', weight=600)
-                ),
-                xaxis=dict(
-                    title="Stock Ticker",
-                    titlefont=dict(color='#EDEBDD', family='Noto Sans', size=12),
-                    tickfont=dict(color='#EDEBDD', family='LetteraMono', size=11),
-                    gridcolor='#2A2A2D',
-                    showgrid=False,
-                    zeroline=False
-                ),
-                yaxis=dict(
-                    title="Score (1-10 Scale)",
-                    titlefont=dict(color='#EDEBDD', family='Noto Sans', size=12),
-                    tickfont=dict(color='#EDEBDD', family='LetteraMono'),
-                    range=[0, 10],
-                    gridcolor='#2A2A2D',
-                    showgrid=False,
-                    zeroline=False
-                ),
-                showlegend=False,
-                height=450,
-                plot_bgcolor='#1F1F21',
-                paper_bgcolor='#1B1B1D',
-                font=dict(color='#EDEBDD', family='Noto Sans'),
-                margin=dict(t=50, l=50, r=30, b=50)
-            )
-            st.plotly_chart(fig_scores, use_container_width=True)
-        
-        with col_chart2:
-            top5 = successful_results[:5]
-            labels = [r['ticker'] for r in top5]
-            values = weights[:5]
-            
-            # Nothing palette slices
-            pie_colors = ['#D71921', '#810100', '#630000', '#EDEBDD', '#BEBBB3']
-            
-            fig_pie = go.Figure(data=[go.Pie(
-                labels=labels,
-                values=values,
-                hole=0.5,
-                marker=dict(
-                    colors=pie_colors,
-                    line=dict(color='#1B1B1D', width=3)
-                ),
-                textfont=dict(size=13, color='#1B1B1D', family='Noto Sans', weight=700),
-                textposition='outside',
-                textinfo='label+percent',
-                hovertemplate='<b>%{label}</b><br>Allocation: %{value}%<br>Amount: $%{customdata:,.0f}<extra></extra>',
-                customdata=[amount * (v/100) for v in values]
-            )])
-            
-            fig_pie.update_layout(
-                title=dict(
-                    text="🍰 PORTFOLIO DISTRIBUTION",
-                    font=dict(size=18, color='#D71921', family='Ndot', weight=600)
-                ),
-                height=450,
-                plot_bgcolor='#1F1F21',
-                paper_bgcolor='#1B1B1D',
-                font=dict(color='#EDEBDD', family='Noto Sans'),
-                showlegend=True,
-                legend=dict(
-                    font=dict(color='#EDEBDD', family='Noto Sans', size=11),
-                    bgcolor='rgba(31, 31, 33, 0.9)',
-                    bordercolor='#2A2A2D',
-                    borderwidth=1,
-                    x=1.05,
-                    y=0.5
-                ),
-                margin=dict(t=50, l=20, r=120, b=20)
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-    
-    # === REPORT ===
-    st.markdown("---")
-    if successful_results:
-        top3 = [r['ticker'] for r in successful_results[:3]]
-        
-        # Enhanced readable report with light theme
-        st.markdown(f"""
-        <div style='background: #FFFFFF; border: 2px solid #D71921; border-radius: 8px; padding: 3rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
-            <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
-                <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
-                    📊 INVESTMENT ANALYSIS REPORT
-                </h2>
-                <p style='font-size: 1rem; font-weight: 400; margin-top: 0.8rem; color: #666666;'>
-                    Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
-                </p>
-            </div>
-            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;'>
-                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>TOP HOLDINGS</p>
-                    <p style='font-size: 1.5rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0; color: #000000;'>
-                        {', '.join(top3)}
-                    </p>
-                </div>
-                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>EXPECTED ANNUAL RETURN</p>
-                    <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
-                        {total_return:.2f}%
-                    </p>
-                </div>
-                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>RISK PROFILE</p>
-                    <p style='font-size: 1.5rem; font-family: "Noto Sans", sans-serif; font-weight: 600; margin: 0; color: #000000;'>
-                        {risk_tolerance}
-                    </p>
-                </div>
-                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>STOCKS ANALYZED</p>
-                    <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
-                        {len(successful_results)}
-                    </p>
-                </div>
-            </div>
-            
-            <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
-            
-            <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
-                <h3 style='color: #000000; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem 0; letter-spacing: 0.05em; text-transform: uppercase;'>
-                    ✓ RECOMMENDED ACTION PLAN
-                </h3>
-                <div style='display: grid; gap: 1.2rem;'>
-                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>1</span>
-                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                            <strong style='color: #000000; font-weight: 600;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
-                        </p>
-                    </div>
-                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>2</span>
-                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                            <strong style='color: #000000; font-weight: 600;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
-                        </p>
-                    </div>
-                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>3</span>
-                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                            <strong style='color: #000000; font-weight: 600;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
-                        </p>
-                    </div>
-                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>4</span>
-                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                            <strong style='color: #000000; font-weight: 600;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div style='margin-top: 2rem; padding: 1.5rem; background: #FFF9E6; border-radius: 8px; border: 1px solid #FFD700; text-align: center;'>
-                <p style='font-size: 1rem; line-height: 1.7; margin: 0; color: #333333;'>
-                    <strong style='color: #D71921; font-weight: 700;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
-                </p>
-            </div>
+        weights = weight_configs.get(risk, weight_configs["Moderate"])[: len(successful[:5])]
+        labels = [r.get("ticker", "") for r in successful[: len(weights)]]
+        fig_pie = go.Figure(
+            data=[
+                go.Pie(
+                    labels=labels,
+                    values=weights,
+                    hole=0.5,
+                    hovertemplate="<b>%{label}</b><br>%{value}%<extra></extra>",
+                )
+            ]
+        )
+        fig_pie.update_layout(title="Portfolio Distribution")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+
+def render_report(successful: List[Dict[str, Any]], amount: float, risk: str, total_return: float):
+    if not successful:
+        return
+    top3 = ", ".join([r.get("ticker", "") for r in successful[:3]])
+    st.markdown(
+        f"""
+        ### 📄 Investment Analysis Report
+        **Generated:** {datetime.now().strftime('%B %d, %Y at %H:%M')}
+
+        - Top holdings: {top3}
+        - Expected annual return: {total_return:.2f}%
+        - Risk profile: {risk}
+        - Stocks analyzed: {len(successful)}
+
+        **Recommended Actions**
+        1. Diversify per the allocation above
+        2. Set 15% stop-loss per position
+        3. Rebalance monthly or when drift >10%
+        4. Track earnings reports
+        """
+    )
+
+
+def footer():
+    st.markdown(
+        """
+        <div class='footer'>
+            <p>AI Investment Advisor • Educational use only. Consult a licensed advisor before investing.</p>
         </div>
-        """, unsafe_allow_html=True)    # Reset button
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# --- Main app ---
+def main() -> None:
+    render_css()
+    st.markdown(
+        """
+        <h1 class='main-header'>
+            <span style='font-size: 0.7em;'>••• </span>AI INVESTMENT ADVISOR<span style='font-size: 0.7em;'> •••</span>
+        </h1>
+        """, 
+        unsafe_allow_html=True
+    )
+    st.markdown(
+        "<p class='subtitle'>> PROFESSIONAL MARKET ANALYSIS | REAL-TIME DATA | AI-POWERED INSIGHTS</p>", 
+        unsafe_allow_html=True
+    )
+
+    api_keys = validate_api_keys()
+    cache_stats = get_cache_stats()
+
+    # Stock selection
+    with st.container():
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown("### 📈 Select Stocks to Analyze")
+            popular = [
+                "AAPL",
+                "MSFT",
+                "NVDA",
+                "GOOGL",
+                "AMZN",
+                "TSLA",
+                "META",
+                "JPM",
+                "UNH",
+                "V",
+            ]
+            selected = st.multiselect("Popular stocks", popular, default=["AAPL", "MSFT", "NVDA", "GOOGL"])
+        with col2:
+            st.markdown("### ➕ Custom")
+            custom = st.text_input("Ticker", placeholder="BTC-USD, RELIANCE.NS").strip().upper()
+            if custom:
+                for t in [c.strip().upper() for c in custom.split(",") if c.strip()]:
+                    if t not in selected:
+                        selected.append(t)
+
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔄 **NEW ANALYSIS**", type="secondary", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
-    with col2:
-        if successful_results:
-            report_df = pd.DataFrame(successful_results)
-            st.download_button(
-                label="📥 Download Report (CSV)",
-                data=report_df.to_csv(index=False),
-                mime="text/csv",
-                file_name="shamiquekhan-stock-report.csv"
-            )
+    col_api1, col_api2, col_api3 = st.columns(3)
+    with col_api1:
+        st.markdown("**Yahoo Finance**")
+        st.success("✅ Active (1hr cache)")
+        st.caption(f"📦 {cache_stats['by_provider'].get('yfinance', 0)} cached")
+    with col_api2:
+        st.markdown("**Finnhub**")
+        if api_keys.get("finnhub"):
+            st.success("✅ Active")
         else:
-            st.button("📥 Download Report (CSV)", disabled=True)
+            st.warning("⚠️ Not configured")
+    with col_api3:
+        st.markdown("**Alpha Vantage**")
+        if api_keys.get("alpha_vantage"):
+            st.success("✅ Active")
+        else:
+            st.warning("⚠️ Not configured")
 
-# Footer - Nothing theme light version
-footer_html = """
-<div class='footer'>
-    <div style='text-align: center; margin-bottom: 1.5rem;'>
-        <h3 style='font-family: Ndot, sans-serif; color: #000000; font-size: 1.8rem; font-weight: 400; margin: 0; letter-spacing: 0.02em;'>
-            AI Investment Advisor
-        </h3>
-        <p style='font-family: Ndot, sans-serif; color: rgba(0,0,0,0.6); font-size: 0.875rem; margin-top: 0.5rem;'>
-            Powered by Advanced Machine Learning & Real-Time Market Data
-        </p>
-    </div>
-    <div style='display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; margin: 2rem 0; padding: 2rem 0; border-top: 1px solid rgba(0,0,0,0.08); border-bottom: 1px solid rgba(0,0,0,0.08);'>
-        <div style='text-align: center;'>
-            <p style='font-family: Ndot, sans-serif; color: #FF0000; font-size: 0.75rem; font-weight: 400; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;'>Developed By</p>
-            <p style='font-family: Ndot, sans-serif; color: #000000; font-size: 1rem; font-weight: 400;'>Shamique Khan</p>
-            <p style='font-family: Ndot, sans-serif; color: rgba(0,0,0,0.6); font-size: 0.75rem;'>VIT Bhopal CSE | GSSoC '25</p>
-        </div>
-        <div style='text-align: center;'>
-            <p style='font-family: Ndot, sans-serif; color: #FF0000; font-size: 0.75rem; font-weight: 400; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;'>Connect</p>
-            <div style='display: flex; justify-content: center; gap: 1.5rem; margin-top: 0.8rem;'>
-                <a href='https://github.com/shamiquekhan' style='color: #000000; text-decoration: none; font-family: Ndot, sans-serif; font-size: 0.875rem; font-weight: 400; transition: color 0.2s;' onmouseover='this.style.color="#FF0000"' onmouseout='this.style.color="#000000"'>GitHub</a>
-                <a href='https://www.linkedin.com/in/shamique-khan/' style='color: #000000; text-decoration: none; font-family: Ndot, sans-serif; font-size: 0.875rem; font-weight: 400; transition: color 0.2s;' onmouseover='this.style.color="#FF0000"' onmouseout='this.style.color="#000000"'>LinkedIn</a>
-            </div>
-        </div>
-        <div style='text-align: center;'>
-            <p style='font-family: Ndot, sans-serif; color: #FF0000; font-size: 0.75rem; font-weight: 400; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 0.05em;'>Features</p>
-            <p style='font-family: Ndot, sans-serif; color: rgba(0,0,0,0.8); font-size: 0.75rem; line-height: 1.8;'>
-                Real-Time Data<br>
-                AI Analysis<br>
-                Portfolio Optimization
-            </p>
-        </div>
-    </div>
-    <div style='text-align: center; padding-top: 1.5rem;'>
-        <p style='font-family: Ndot, sans-serif; color: #000000; font-size: 0.875rem; font-weight: 400; margin-bottom: 0.5rem; letter-spacing: 0.02em;'>
-            100% FREE • NO API KEYS REQUIRED
-        </p>
-        <p style='font-family: Ndot, sans-serif; color: rgba(0,0,0,0.6); font-size: 0.75rem; line-height: 1.6;'>
-            Professional-Grade Analysis • Global Market Coverage • Educational Tool
-        </p>
-        <p style='font-family: LetteraMono, monospace; color: #FF0000; font-size: 0.65rem; margin-top: 1rem; letter-spacing: 0.05em;'>
-            © 2025 AI Investment Advisor • Nothing-inspired design
-        </p>
-    </div>
-</div>
-"""
+    st.info("Smart load distribution with cache; sequential fetch avoids rate limits.")
+    
+    # Show available static data
+    if LOCAL_DATA_AVAILABLE:
+        static_data = load_static_prices()
+        if static_data:
+            st.success(f"📂 {len(static_data)} tickers available in local fallback (updated 2025-12-06)")
 
-components.html(footer_html, height=520, scrolling=False)
+    use_multi = st.checkbox("🚀 Enable Multi-Provider Mode", value=True)
+    use_demo = st.checkbox("Use sample data if throttled", value=False)
+    
+    # ML sentiment control
+    ml_status = check_ml_availability()
+    if ml_status.get("transformers_installed"):
+        use_ml_sentiment = st.checkbox("🤖 Use ML-Powered Sentiment (FinBERT)", value=True,
+                                      help="Uses HuggingFace FinBERT for accurate financial sentiment")
+        st.success("✅ ML models loaded (FinBERT)")
+    else:
+        use_ml_sentiment = False
+        st.info("💡 Install ML models: `pip install transformers torch` for enhanced sentiment")
+
+    col_cache1, col_cache2 = st.columns([2, 1])
+    col_cache1.caption(f"Cache: {cache_stats['total_files']} files ({cache_stats['total_size_mb']:.2f} MB)")
+    with col_cache2:
+        if st.button("🗑️ Clear Cache"):
+            try:
+                st.cache_data.clear()
+                clear_multi_cache()
+            except Exception:
+                st.cache_data.clear()
+            st.success("Cache cleared")
+            st.rerun()
+
+    # Investor profile (optional)
+    with st.expander("👤 Investor Profile (optional)", expanded=False):
+        c1, c2 = st.columns(2)
+        with c1:
+            age = st.number_input("Age", 18, 100, 30)
+            amount = st.number_input("Investment Amount ($)", 1000, 1_000_000, 50_000, step=1000)
+        with c2:
+            risk = st.selectbox("Risk Tolerance", ["Conservative", "Moderate", "Aggressive"], index=1)
+            goal = st.text_input("Goal", placeholder="Retirement, House, etc.")
+
+    if st.button("🚀 Analyze Selected Stocks", type="primary"):
+        if not selected:
+            st.error("Select at least one stock")
+        elif len(selected) > 15:
+            st.error("Maximum 15 stocks")
+        else:
+            st.session_state.selected = list(dict.fromkeys(selected))
+            st.session_state.amount = amount
+            st.session_state.risk = risk
+            st.rerun()
+
+    if "selected" in st.session_state:
+        tickers = st.session_state.selected
+        amount = st.session_state.get("amount", 50_000)
+        risk = st.session_state.get("risk", "Moderate")
+
+        st.success(f"Analyzing {len(tickers)} stocks...")
+
+        with st.spinner("Fetching data..."):
+            raw = fetch_sequential(tickers, use_multi=use_multi)
+            if not raw and use_demo:
+                raw = [get_demo_stock(t) for t in tickers]
+
+        results = sanitize_results(raw)
+
+        # Enrich with scores and recommendations
+        enriched: List[Dict[str, Any]] = []
+        for res in results:
+            if not is_valid_price(res.get("price")) or not res.get("success", True):
+                continue
+            
+            # Calculate health score
+            try:
+                health = calculate_health_score(res)
+                health_score = health.get("score", 50)
+                health_grade = health.get("grade", "C")
+            except Exception:
+                health_score = 50
+                health_grade = "C"
+            
+            # Calculate volatility risk
+            try:
+                volatility_risk = calculate_volatility_risk(res)
+                risk_label = volatility_risk.get("label", "🟡 Moderate Risk")
+            except Exception:
+                risk_label = "🟡 Moderate Risk"
+            
+            try:
+                score = calculate_ai_score(res, health_score=health_score, sentiment_score=0.0)
+            except Exception:
+                score = 5.0
+            try:
+                rec = get_recommendation(score, health_grade=health_grade, sentiment_label=res.get("sentiment_label", "Neutral"), risk_label=risk_label)
+            except Exception:
+                rec = {"recommendation": rating_from_score(score), "confidence": "Medium", "explanation": "Fallback"}
+
+            enriched.append(
+                {
+                    **res,
+                    "score": score,
+                    "health_score": health_score,
+                    "health_grade": health_grade,
+                    "risk_label": risk_label,
+                    "recommendation": rec.get("recommendation"),
+                    "confidence": rec.get("confidence", "N/A"),
+                    "explanation": rec.get("explanation", ""),
+                }
+            )
+
+        # Fetch news + sentiment (sequential, defensive)
+        for item in enriched:
+            try:
+                articles = fetch_stock_news(item.get("ticker", ""), max_articles=5, use_ml=use_ml_sentiment)
+                sentiment = calculate_overall_sentiment(articles, use_ml=use_ml_sentiment)
+                item["news_articles"] = articles
+                item["sentiment_label"] = sentiment.get("label", "🟡 Neutral")
+                item["sentiment_score"] = sentiment.get("score", 0.0)
+                item["sentiment_method"] = sentiment.get("method", "keyword")
+            except Exception:
+                item["news_articles"] = []
+                item["sentiment_label"] = "🟡 Neutral"
+                item["sentiment_score"] = 0.0
+                item["sentiment_method"] = "fallback"
+
+        enriched.sort(key=lambda x: safe_float(x.get("score"), 0.0), reverse=True)
+
+        if enriched:
+            render_top_cards(enriched)
+            render_detailed(enriched)
+            render_table(enriched)
+            render_portfolio(enriched, amount, risk)
+            render_charts(enriched, amount, risk)
+
+            total_return = sum([safe_float(r.get("change"), 0.0) for r in enriched[:5]])
+            render_report(enriched, amount, risk, total_return)
+        else:
+            st.warning("No valid stock data; try again or enable demo data.")
+
+    footer()
+
+
+if __name__ == "__main__":
+    main()
+

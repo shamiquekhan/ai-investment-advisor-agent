@@ -47,6 +47,10 @@ git clone https://github.com/shamiquekhan/stock-advisor-free
 cd stock-advisor-free
 pip install -r requirements.txt
 
+# 🔒 SECURITY: Setup API keys (optional but recommended)
+./setup_keys.sh  # Creates .env file
+# Then edit .env with your free API keys (see SECURITY.md)
+
 # Optional: Add API keys for multi-provider mode
 export FINNHUB_API_KEY="your_key"  # Get at finnhub.io/register
 export ALPHA_VANTAGE_API_KEY="your_key"  # Get at alphavantage.co

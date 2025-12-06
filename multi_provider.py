@@ -14,6 +14,13 @@ from pathlib import Path
 import threading
 from typing import Dict, List, Optional
 
+# Load environment variables from .env file if present
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed, will use system env vars only
+
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
@@ -25,21 +32,33 @@ CACHE_DIR.mkdir(exist_ok=True)
 YFINANCE_CACHE_TTL = 3600  # 1 hour
 FINNHUB_CACHE_TTL = 300     # 5 minutes (real-time)
 ALPHA_VANTAGE_CACHE_TTL = 3600  # 1 hour
+TWELVE_DATA_CACHE_TTL = 300  # 5 minutes (real-time)
+MARKETSTACK_CACHE_TTL = 900  # 15 minutes
 
 # API Keys (FREE TIER - get yours at the links below)
 # Finnhub: https://finnhub.io/register (60 calls/minute free)
 # Alpha Vantage: https://www.alphavantage.co/support/#api-key (25 calls/day free)
-FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY', '')  # Set in Streamlit secrets or env
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY', '')
+# Twelve Data: https://twelvedata.com/pricing (800 calls/day free)
+# MarketStack: https://marketstack.com/product (1000 calls/month free)
+
+# ⚠️ SECURITY: Load from environment variables only (never hardcode)
+FINNHUB_API_KEY = os.getenv('FINNHUB_API_KEY')
+ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+TWELVE_DATA_API_KEY = os.getenv('TWELVE_DATA_API_KEY')
+MARKETSTACK_API_KEY = os.getenv('MARKETSTACK_API_KEY')
 
 # Rate limiting
 _yfinance_lock = threading.Lock()
 _finnhub_lock = threading.Lock()
 _alphavantage_lock = threading.Lock()
+_twelvedata_lock = threading.Lock()
+_marketstack_lock = threading.Lock()
 
 YFINANCE_DELAY = 1.5  # seconds between calls
 FINNHUB_DELAY = 1.0   # 60 calls/min = 1 call/sec (safe)
 ALPHAVANTAGE_DELAY = 13.0  # 25 calls/day ≈ 1 call per 13 sec (very conservative)
+TWELVE_DATA_DELAY = 0.11  # 800 calls/day ≈ 8 calls/min (safe with buffer)
+MARKETSTACK_DELAY = 0.1  # 1000 calls/month ≈ 33/day (safe with buffer)
 
 # ============================================================================
 # CACHE UTILITIES
@@ -86,7 +105,7 @@ def _write_cache(cache_path: Path, data: Dict):
 
 def get_yfinance_data(ticker: str) -> Optional[Dict]:
     """
-    Fetch comprehensive data from Yahoo Finance with caching.
+    Fetch comprehensive data from Yahoo Finance with caching and safe rate limiting.
     USE FOR: Historical prices, fundamentals, basic info.
     CACHE: 1 hour
     """
@@ -97,46 +116,38 @@ def get_yfinance_data(ticker: str) -> Optional[Dict]:
     if cached:
         return cached
     
-    # Rate-limited fetch
-    with _yfinance_lock:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            history = stock.history(period="3mo")
-            
-            if history.empty:
-                return None
-            
-            # Extract key data
+    # Import safe rate-limited fetch from data_sources
+    try:
+        from data_sources import get_stock_data
+        result = get_stock_data(ticker)
+        
+        if result and result.get('success'):
+            # Map data_sources format to multi_provider format
             data = {
                 'ticker': ticker,
-                'name': info.get('longName', ticker),
-                'current_price': info.get('currentPrice', history['Close'].iloc[-1]),
-                'previous_close': info.get('previousClose', history['Close'].iloc[-2] if len(history) >= 2 else None),
-                'market_cap': info.get('marketCap', 0),
-                'pe_ratio': info.get('trailingPE', 0),
-                'dividend_yield': info.get('dividendYield', 0),
-                'beta': info.get('beta', 1.0),
-                'fifty_two_week_high': info.get('fiftyTwoWeekHigh', 0),
-                'fifty_two_week_low': info.get('fiftyTwoWeekLow', 0),
-                'volume': info.get('volume', history['Volume'].iloc[-1]),
-                'avg_volume': info.get('averageVolume', history['Volume'].mean()),
-                'history': {
-                    'close': history['Close'].tolist()[-20:],  # Last 20 days
-                    'volume': history['Volume'].tolist()[-20:],
-                },
+                'name': result.get('name', ticker),
+                'current_price': result.get('price', 0),
+                'previous_close': result.get('previous_close', 0),
+                'market_cap': result.get('marketCap', 0),
+                'pe_ratio': result.get('pe', 0),
+                'dividend_yield': result.get('dividend', 0),
+                'beta': result.get('beta', 1.0),
+                'fifty_two_week_high': result.get('fiftyTwoWeekHigh', 0),
+                'fifty_two_week_low': result.get('fiftyTwoWeekLow', 0),
+                'volume': result.get('volume', 0),
+                'avg_volume': result.get('avgVolume', 0),
+                'history': result.get('history', {}),
                 'timestamp': datetime.now().isoformat()
             }
             
             # Cache and return
             _write_cache(cache_path, data)
-            time.sleep(YFINANCE_DELAY)
             return data
             
-        except Exception as e:
-            print(f"⚠️ YFinance error for {ticker}: {e}")
-            time.sleep(YFINANCE_DELAY)
-            return None
+    except Exception as e:
+        print(f"⚠️ YFinance (via data_sources) error for {ticker}: {e}")
+    
+    return None
 
 # ============================================================================
 # FINNHUB (Real-time quotes, news)
@@ -252,8 +263,222 @@ def get_alphavantage_overview(ticker: str) -> Optional[Dict]:
             return None
 
 # ============================================================================
+# TWELVE DATA (Real-time quotes, time series)
+# ============================================================================
+
+def get_twelvedata_quote(ticker: str) -> Optional[Dict]:
+    """
+    Fetch real-time quote from Twelve Data.
+    USE FOR: Live price, comprehensive market data.
+    CACHE: 5 minutes
+    FREE TIER: 800 calls/day (8 per minute)
+    """
+    if not TWELVE_DATA_API_KEY:
+        return None
+    
+    cache_path = _get_cache_path('twelvedata', ticker, 'quote')
+    
+    # Try cache first
+    cached = _read_cache(cache_path, TWELVE_DATA_CACHE_TTL)
+    if cached:
+        return cached
+    
+    # Rate-limited fetch
+    with _twelvedata_lock:
+        try:
+            url = f"https://api.twelvedata.com/quote?symbol={ticker}&apikey={TWELVE_DATA_API_KEY}"
+            response = requests.get(url, timeout=10)
+            
+            if response.status_code == 200:
+                quote = response.json()
+                
+                # Check for API error response
+                if 'code' in quote or 'status' in quote:
+                    print(f"⚠️ Twelve Data API error for {ticker}: {quote.get('message', 'Unknown error')}")
+                    time.sleep(TWELVE_DATA_DELAY)
+                    return None
+                
+                # Extract data
+                data = {
+                    'ticker': ticker,
+                    'name': quote.get('name', ticker),
+                    'current_price': float(quote.get('close', 0)),
+                    'previous_close': float(quote.get('previous_close', 0)),
+                    'change': float(quote.get('change', 0)),
+                    'percent_change': float(quote.get('percent_change', 0)),
+                    'high': float(quote.get('high', 0)),
+                    'low': float(quote.get('low', 0)),
+                    'open': float(quote.get('open', 0)),
+                    'volume': int(quote.get('volume', 0)),
+                    'fifty_two_week_high': float(quote.get('fifty_two_week', {}).get('high', 0)),
+                    'fifty_two_week_low': float(quote.get('fifty_two_week', {}).get('low', 0)),
+                    'timestamp': datetime.now().isoformat()
+                }
+                
+                _write_cache(cache_path, data)
+                time.sleep(TWELVE_DATA_DELAY)
+                return data
+            else:
+                print(f"⚠️ Twelve Data HTTP {response.status_code} for {ticker}")
+                time.sleep(TWELVE_DATA_DELAY)
+                return None
+                
+        except Exception as e:
+            print(f"⚠️ Twelve Data error for {ticker}: {e}")
+            time.sleep(TWELVE_DATA_DELAY)
+            return None
+
+# ============================================================================
+# MARKETSTACK (EOD data, real-time intraday)
+# ============================================================================
+
+def get_marketstack_data(ticker: str) -> Optional[Dict]:
+    """
+    Fetch stock data from MarketStack API.
+    USE FOR: End-of-day data, global markets (170k+ tickers).
+    CACHE: 15 minutes
+    FREE TIER: 1000 calls/month (33/day)
+    """
+    if not MARKETSTACK_API_KEY:
+        return None
+    
+    cache_path = _get_cache_path('marketstack', ticker, 'eod')
+    
+    # Try cache first
+    cached = _read_cache(cache_path, MARKETSTACK_CACHE_TTL)
+    if cached:
+        return cached
+    
+    # Rate-limited fetch
+    with _marketstack_lock:
+        try:
+            # Get latest EOD data (use HTTPS for better compatibility)
+            url = f"https://api.marketstack.com/v1/eod/latest"
+            params = {
+                'access_key': MARKETSTACK_API_KEY,
+                'symbols': ticker,
+                'limit': 1
+            }
+            response = requests.get(url, params=params, timeout=10)
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                # Check for API error
+                if 'error' in result:
+                    print(f"⚠️ MarketStack API error for {ticker}: {result['error'].get('message', 'Unknown error')}")
+                    time.sleep(MARKETSTACK_DELAY)
+                    return None
+                
+                # Extract data from response
+                if not result.get('data') or len(result['data']) == 0:
+                    print(f"⚠️ MarketStack: No data for {ticker}")
+                    time.sleep(MARKETSTACK_DELAY)
+                    return None
+                
+                quote = result['data'][0]
+                
+                # Calculate percent change
+                close = float(quote.get('close', 0))
+                open_price = float(quote.get('open', 0))
+                percent_change = ((close - open_price) / open_price * 100) if open_price > 0 else 0.0
+                
+                data = {
+                    'ticker': ticker,
+                    'name': quote.get('symbol', ticker),
+                    'current_price': close,
+                    'open': open_price,
+                    'high': float(quote.get('high', 0)),
+                    'low': float(quote.get('low', 0)),
+                    'previous_close': float(quote.get('adj_close', close)),
+                    'change': close - open_price,
+                    'percent_change': percent_change,
+                    'volume': int(quote.get('volume', 0)),
+                    'date': quote.get('date', datetime.now().isoformat()),
+                    'exchange': quote.get('exchange', 'Unknown'),
+                    'timestamp': datetime.now().isoformat(),
+                    'provider': 'marketstack'
+                }
+                
+                _write_cache(cache_path, data)
+                time.sleep(MARKETSTACK_DELAY)
+                return data
+            else:
+                print(f"⚠️ MarketStack HTTP {response.status_code} for {ticker}")
+                time.sleep(MARKETSTACK_DELAY)
+                return None
+                
+        except Exception as e:
+            print(f"⚠️ MarketStack error for {ticker}: {e}")
+            time.sleep(MARKETSTACK_DELAY)
+            return None
+
+# ============================================================================
 # UNIFIED API - Combines all providers intelligently
 # ============================================================================
+
+def fetch_quote_multi_provider(ticker: str) -> Optional[Dict]:
+    """
+    Fetch stock quote with cascading fallback across providers.
+    
+    Strategy: Yahoo → Finnhub → MarketStack → Alpha Vantage (immediate fallback on error)
+    - Try Yahoo Finance first (with safe rate limiting)
+    - If Yahoo fails (429, parse error, etc.), immediately try Finnhub
+    - If Finnhub fails, try MarketStack
+    - If MarketStack fails, try Alpha Vantage
+    - Return None only after all providers fail
+    
+    Returns unified dict with stock data, or None if all providers fail.
+    """
+    # Try Yahoo Finance first
+    try:
+        yf_data = get_yfinance_data(ticker)
+        if yf_data and yf_data.get('current_price'):
+            print(f"✅ Yahoo Finance success for {ticker}")
+            return yf_data
+        else:
+            print(f"⚠️ Yahoo Finance failed for {ticker}, trying Finnhub...")
+    except Exception as e:
+        print(f"⚠️ Yahoo Finance exception for {ticker}, trying Finnhub... ({e})")
+    
+    # Fallback to Finnhub if API key available
+    if FINNHUB_API_KEY:
+        try:
+            fh_data = get_finnhub_quote(ticker)
+            if fh_data and fh_data.get('current_price'):
+                print(f"✅ Finnhub success for {ticker}")
+                return fh_data
+            else:
+                print(f"⚠️ Finnhub failed for {ticker}, trying MarketStack...")
+        except Exception as e:
+            print(f"⚠️ Finnhub exception for {ticker}, trying MarketStack... ({e})")
+    
+    # Fallback to MarketStack if API key available
+    if MARKETSTACK_API_KEY:
+        try:
+            ms_data = get_marketstack_data(ticker)
+            if ms_data and ms_data.get('current_price'):
+                print(f"✅ MarketStack success for {ticker}")
+                return ms_data
+            else:
+                print(f"⚠️ MarketStack failed for {ticker}, trying Alpha Vantage...")
+        except Exception as e:
+            print(f"⚠️ MarketStack exception for {ticker}, trying Alpha Vantage... ({e})")
+    
+    # Fallback to Alpha Vantage if API key available
+    if ALPHA_VANTAGE_API_KEY:
+        try:
+            av_data = get_alphavantage_overview(ticker)
+            if av_data and av_data.get('current_price'):
+                print(f"✅ Alpha Vantage success for {ticker}")
+                return av_data
+            else:
+                print(f"⚠️ Alpha Vantage failed for {ticker}")
+        except Exception as e:
+            print(f"⚠️ Alpha Vantage exception for {ticker}: {e}")
+    
+    print(f"❌ All providers failed for {ticker}")
+    return None
 
 def get_stock_data_multi(ticker: str) -> Optional[Dict]:
     """
@@ -262,6 +487,7 @@ def get_stock_data_multi(ticker: str) -> Optional[Dict]:
     Strategy:
     - Yahoo Finance: Historical data, fundamentals (cached 1hr)
     - Finnhub: Real-time quote (cached 5min)
+    - MarketStack: EOD data, global markets (cached 15min)
     - Alpha Vantage: Backup fundamentals (cached 1hr, used sparingly)
     
     Returns unified dict with all available data.
@@ -285,8 +511,14 @@ def get_stock_data_multi(ticker: str) -> Optional[Dict]:
             results['day_low'] = fh_data['low']
             results['realtime'] = True
     
+    # Supplemental: MarketStack (if API key available and no data yet)
+    if not results and MARKETSTACK_API_KEY:
+        ms_data = get_marketstack_data(ticker)
+        if ms_data:
+            results.update(ms_data)
+    
     # Backup: Alpha Vantage (only if Yahoo failed and we have budget)
-    if not yf_data and ALPHA_VANTAGE_API_KEY:
+    if not results and ALPHA_VANTAGE_API_KEY:
         av_data = get_alphavantage_overview(ticker)
         if av_data:
             results.update(av_data)
@@ -295,23 +527,23 @@ def get_stock_data_multi(ticker: str) -> Optional[Dict]:
 
 def get_stocks_parallel_multi(tickers: List[str], max_workers: int = 3) -> Dict[str, Dict]:
     """
-    Fetch multiple stocks in parallel across providers.
+    Fetch multiple stocks in parallel with cascading fallback across providers.
     
     Args:
         tickers: List of ticker symbols
         max_workers: Number of parallel workers (3 is safe for free tiers)
     
     Returns:
-        Dict mapping ticker -> stock data
+        Dict mapping ticker -> stock data (using fetch_quote_multi_provider with fallback)
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
     
     results = {}
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Submit all tasks
+        # Submit all tasks using cascading fallback
         future_to_ticker = {
-            executor.submit(get_stock_data_multi, ticker): ticker
+            executor.submit(fetch_quote_multi_provider, ticker): ticker
             for ticker in tickers
         }
         
@@ -378,7 +610,8 @@ def validate_api_keys() -> Dict[str, bool]:
     """Check which API keys are configured."""
     return {
         'finnhub': bool(FINNHUB_API_KEY),
-        'alpha_vantage': bool(ALPHA_VANTAGE_API_KEY)
+        'alpha_vantage': bool(ALPHA_VANTAGE_API_KEY),
+        'marketstack': bool(MARKETSTACK_API_KEY)
     }
 
 def get_provider_status() -> str:
@@ -391,6 +624,11 @@ def get_provider_status() -> str:
         status.append("✅ Finnhub (Real-time quotes)")
     else:
         status.append("⚠️ Finnhub (Not configured - add FINNHUB_API_KEY)")
+    
+    if keys['marketstack']:
+        status.append("✅ MarketStack (Global markets, EOD data)")
+    else:
+        status.append("⚠️ MarketStack (Not configured - add MARKETSTACK_API_KEY)")
     
     if keys['alpha_vantage']:
         status.append("✅ Alpha Vantage (Backup data)")

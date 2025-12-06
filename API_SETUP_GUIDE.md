@@ -1,20 +1,31 @@
 # 🚀 Multi-Provider API Setup Guide
 
+## ⚠️ Security First
+
+**IMPORTANT:** Never hardcode API keys in your code! See [SECURITY.md](SECURITY.md) for:
+- ✅ How to use environment variables securely
+- ✅ Key rotation instructions
+- ✅ `.env` file setup
+
+---
+
 ## Overview
 
-The AI Investment Advisor uses **3 FREE data providers** to eliminate rate limits and deliver fast, reliable stock data:
+The AI Investment Advisor uses **4 FREE data providers** to eliminate rate limits and deliver fast, reliable stock data:
 
 1. **Yahoo Finance** (Always active, no setup needed)
 2. **Finnhub** (Optional, real-time quotes)
-3. **Alpha Vantage** (Optional, backup fundamentals)
+3. **MarketStack** (Optional, global markets - 170k+ tickers)
+4. **Alpha Vantage** (Optional, backup fundamentals)
 
 ## 🎯 Why Multi-Provider?
 
 **Problem**: Single-provider systems hit rate limits (429 errors) when analyzing multiple stocks.
 
-**Solution**: Distribute requests across 3 free APIs:
+**Solution**: Distribute requests across 4 free APIs:
 - Yahoo Finance: Historical data (1hr cache)
-- Finnhub: Real-time quotes (5min cache)  
+- Finnhub: Real-time quotes (5min cache)
+- MarketStack: Global markets, EOD data (15min cache)
 - Alpha Vantage: Backup data (1hr cache)
 
 **Result**: Zero 429 errors, faster responses, 100% free!
@@ -40,15 +51,50 @@ The AI Investment Advisor uses **3 FREE data providers** to eliminate rate limit
 
 **Add to your environment**:
 ```bash
-# Option A: Environment variable (local development)
+# Secure method: Use .env file (recommended)
+# 1. Copy template:
+cp .env.example .env
+
+# 2. Edit .env and add your key:
+FINNHUB_API_KEY="your_key_here"
+
+# 3. .env is gitignored (safe)
+
+# Alternative: Export in terminal (temporary)
 export FINNHUB_API_KEY="your_key_here"
 
-# Option B: Streamlit secrets (cloud deployment)
-# Create .streamlit/secrets.toml
-echo 'FINNHUB_API_KEY = "your_key_here"' > .streamlit/secrets.toml
+# For Streamlit Cloud: Use Secrets in dashboard
+# See SECURITY.md for details
 ```
 
-### Option 3: Add Alpha Vantage (Extra Backup)
+**🔒 Security Note:** Never commit API keys to git. Use `.env` file or environment variables.
+
+### Option 3: Add MarketStack (Global Markets)
+**Benefits**: 170,000+ tickers, 70+ exchanges, international stocks
+
+**Steps**:
+1. Visit https://marketstack.com/signup/free
+2. Sign up for FREE (no credit card required)
+3. Copy your API key from dashboard
+4. **1000 calls/month** (~33/day) on free tier
+
+**Verify your key**:
+```bash
+python verify_marketstack.py YOUR_API_KEY_HERE
+```
+
+**Add to your environment**:
+```bash
+# Option A: Environment variable
+export MARKETSTACK_API_KEY="your_key_here"
+
+# Option B: Streamlit secrets
+echo 'MARKETSTACK_API_KEY = "your_key_here"' >> .streamlit/secrets.toml
+```
+
+**Supported Markets**: NYSE, NASDAQ, LSE, TSX, BSE, TSE, XETRA, and 65+ more!
+
+### Option 4: Add Alpha Vantage (Extra Backup)
 **Benefits**: Backup fundamentals, analyst ratings, more data sources
 
 **Steps**:
@@ -78,6 +124,7 @@ echo 'ALPHA_VANTAGE_API_KEY = "your_key_here"' >> .streamlit/secrets.toml
 ### Cache Lifetimes
 - Yahoo Finance: **1 hour** (fundamentals don't change often)
 - Finnhub: **5 minutes** (real-time quotes)
+- MarketStack: **15 minutes** (EOD data)
 - Alpha Vantage: **1 hour** (backup data)
 
 ### Cache Location
