@@ -402,47 +402,6 @@ def render_css():
             border-radius: 2px !important;
         }
         
-        .streamlit-expanderHeader {
-            background: var(--neutral-1-10) !important;
-            color: var(--neutral-1-1000) !important;
-            border: 1px solid var(--neutral-1-200) !important;
-            border-radius: 2px !important;
-            font-family: 'Doto', monospace !important;
-            padding: 1rem 3rem 1rem 1.5rem !important;
-            font-weight: 600 !important;
-            position: relative !important;
-            min-height: 3rem !important;
-            display: flex !important;
-            align-items: center !important;
-            font-size: 0.9rem !important;
-        }
-        
-        .streamlit-expanderHeader:hover {
-            background: var(--neutral-1-50) !important;
-            border-color: var(--accent-1-500) !important;
-        }
-        
-        /* Hide Streamlit's icon SVG */
-        [data-testid="stExpander"] svg {
-            position: absolute !important;
-            right: 1rem !important;
-            top: 50% !important;
-            transform: translateY(-50%) !important;
-        }
-        
-        /* Hide the keyboard_arrow_right text by targeting the text node */
-        [data-testid="stExpander"] button[kind="header"] p {
-            display: flex !important;
-            align-items: center !important;
-        }
-        
-        /* Hide all direct text nodes, show only child elements */
-        [data-testid="stExpander"] button[kind="header"] p::first-line {
-            visibility: hidden !important;
-            height: 0 !important;
-            width: 0 !important;
-        }
-        
         .footer {
             background: var(--neutral-1-10);
             border: 1px solid var(--neutral-1-200);
@@ -516,49 +475,6 @@ def render_css():
             border-left: 3px solid #2196F3 !important;
         }
         </style>
-        
-        <script>
-        // Remove keyboard_arrow_right text from expanders
-        function cleanExpanderText() {
-            const expanders = document.querySelectorAll('[data-testid="stExpander"] button[kind="header"]');
-            expanders.forEach(button => {
-                const walker = document.createTreeWalker(
-                    button,
-                    NodeFilter.SHOW_TEXT,
-                    null
-                );
-                
-                const nodesToRemove = [];
-                while(walker.nextNode()) {
-                    const node = walker.currentNode;
-                    if (node.nodeValue && node.nodeValue.includes('keyboard_arrow')) {
-                        nodesToRemove.push(node);
-                    }
-                }
-                
-                nodesToRemove.forEach(node => {
-                    node.nodeValue = '';
-                });
-            });
-        }
-        
-        // Run on load and observe for new content
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', cleanExpanderText);
-        } else {
-            cleanExpanderText();
-        }
-        
-        // Watch for Streamlit updates
-        const observer = new MutationObserver(cleanExpanderText);
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
-        
-        // Also clean every 500ms as backup
-        setInterval(cleanExpanderText, 500);
-        </script>
         """,
         unsafe_allow_html=True,
     )
@@ -614,9 +530,24 @@ def render_detailed(successful: List[Dict[str, Any]]):
     if not successful:
         return
     st.markdown("## 📋 Detailed Stock Analysis")
-    for res in successful:
+    
+    # Create dropdown selection
+    stock_options = [f"{res.get('ticker','')} — {res.get('name','')} (Score: {safe_float(res.get('score'), 0.0):.1f}/10)" for res in successful]
+    selected_stock = st.selectbox(
+        "Select a stock to view details:",
+        options=range(len(stock_options)),
+        format_func=lambda x: stock_options[x],
+        key="stock_detail_selector"
+    )
+    
+    if selected_stock is not None:
+        res = successful[selected_stock]
         score = safe_float(res.get("score"), 0.0)
-        with st.expander(f"{res.get('ticker','')} — {res.get('name','')} | Score {score:.1f}/10"):
+        
+        # Display in a nice container
+        with st.container():
+            st.markdown(f"### {res.get('ticker','')} — {res.get('name','')}")
+            
             c1, c2, c3, c4 = st.columns(4)
             c1.metric("Price", format_price(res.get("price")), format_change(res.get("change")))
             c2.metric("AI Score", f"{score:.1f}/10")
