@@ -15,6 +15,14 @@ import streamlit.components.v1 as components
 
 from cache_manager import clear_cache
 from data_sources import get_demo_stock, get_stock_data, get_stocks_parallel
+from multi_provider import (
+    get_stock_data_multi, 
+    get_stocks_parallel_multi, 
+    validate_api_keys,
+    get_provider_status,
+    get_cache_stats,
+    clear_cache as clear_multi_cache
+)
 from scoring import calculate_ai_score, get_recommendation
 from health_scoring import calculate_health_score, calculate_volatility_risk
 from news_sentiment import fetch_stock_news, calculate_overall_sentiment
@@ -390,6 +398,70 @@ with col2:
     if custom_ticker and custom_ticker not in selected_stocks:
         selected_stocks.append(custom_ticker)
 
+# === MULTI-PROVIDER DATA SOURCES ===
+st.markdown('<div style="background: #FAFAFA; padding: 2rem; border: 1px solid rgba(0, 0, 0, 0.08); border-radius: 0; margin-bottom: 2rem;">', unsafe_allow_html=True)
+st.markdown("### ⚡ **MULTI-PROVIDER DATA ENGINE**")
+
+# Show provider status
+api_keys = validate_api_keys()
+cache_stats = get_cache_stats()
+
+col_api1, col_api2, col_api3 = st.columns(3)
+with col_api1:
+    st.markdown("**Yahoo Finance**")
+    st.success("✅ Active (1hr cache)")
+    st.caption(f"📦 {cache_stats['by_provider'].get('yfinance', 0)} cached")
+
+with col_api2:
+    st.markdown("**Finnhub**")
+    if api_keys['finnhub']:
+        st.success("✅ Active (5min cache)")
+        st.caption(f"📦 {cache_stats['by_provider'].get('finnhub', 0)} cached")
+    else:
+        st.warning("⚠️ Not configured")
+        with st.expander("ℹ️ Setup Finnhub (FREE)"):
+            st.markdown("""
+            1. Register at [finnhub.io/register](https://finnhub.io/register)
+            2. Get your free API key (60 calls/min)
+            3. Add to Streamlit secrets or environment:
+            ```
+            FINNHUB_API_KEY=your_key_here
+            ```
+            """)
+
+with col_api3:
+    st.markdown("**Alpha Vantage**")
+    if api_keys['alpha_vantage']:
+        st.success("✅ Active (1hr cache)")
+        st.caption(f"📦 {cache_stats['by_provider'].get('alphavantage', 0)} cached")
+    else:
+        st.warning("⚠️ Not configured")
+        with st.expander("ℹ️ Setup Alpha Vantage (FREE)"):
+            st.markdown("""
+            1. Get free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key)
+            2. Add to Streamlit secrets or environment:
+            ```
+            ALPHA_VANTAGE_API_KEY=your_key_here
+            ```
+            """)
+
+# Data strategy explanation
+st.info("""
+**💡 Smart Load Distribution:**
+- **Yahoo Finance**: Historical prices, fundamentals (cached 1 hour)
+- **Finnhub**: Real-time quotes (cached 5 minutes) - *Optional*
+- **Alpha Vantage**: Backup data (cached 1 hour) - *Optional*
+
+All providers stay within FREE tier limits. Cache eliminates 429 errors!
+""")
+
+# Toggle multi-provider mode
+use_multi_provider = st.checkbox(
+    "🚀 Enable Multi-Provider Mode (recommended)",
+    value=True,
+    help="Uses multiple free APIs to eliminate rate limits"
+)
+
 # Fallback toggle
 use_demo_if_rate_limited = st.checkbox(
     "Use sample data if live data is throttled (Yahoo 429)",
@@ -397,13 +469,17 @@ use_demo_if_rate_limited = st.checkbox(
 )
 
 # Cache controls
-col_cache1, col_cache2 = st.columns([2, 1])
+col_cache1, col_cache2, col_cache3 = st.columns([2, 1, 1])
 with col_cache1:
-    st.caption("💾 Persistent cache stores recent API data to avoid throttling.")
+    st.caption(f"💾 Cache: {cache_stats['total_files']} files ({cache_stats['total_size_mb']:.2f} MB)")
 with col_cache2:
-    if st.button("🗑️ Clear Cache", help="Remove all cached stock data"):
+    if st.button("🗑️ Clear Cache"):
         clear_cache()
+        clear_multi_cache()
         st.success("Cache cleared!")
+        st.rerun()
+with col_cache3:
+    if st.button("📊 Refresh Stats"):
         st.rerun()
 
 st.markdown('</div>', unsafe_allow_html=True)
@@ -441,15 +517,45 @@ if 'analyze' in st.session_state and st.session_state.analyze:
     
     st.success(f"✅ Analyzing **{len(selected_stocks)} stocks** live...")
     
-    # === DATA FETCHING (PARALLEL) ===
-    with st.spinner(f"📊 Fetching LIVE market data for {len(selected_stocks)} stocks in parallel..."):
-        # Fetch all stocks in parallel using ThreadPoolExecutor
-        stock_data_list = get_stocks_parallel(selected_stocks)
+    # Store multi-provider preference
+    use_multi = st.session_state.get('use_multi_provider', use_multi_provider)
+    
+    # === DATA FETCHING (PARALLEL WITH MULTI-PROVIDER) ===
+    with st.spinner(f"📊 Fetching data for {len(selected_stocks)} stocks..."):
+        if use_multi:
+            # Use multi-provider system (Yahoo + Finnhub + Alpha Vantage)
+            st.info("🚀 Using multi-provider mode (Yahoo + Finnhub + Alpha Vantage)")
+            stock_data_dict = get_stocks_parallel_multi(selected_stocks, max_workers=3)
+            
+            # Convert to list format for compatibility
+            stock_data_list = []
+            for ticker, data in stock_data_dict.items():
+                stock_data_list.append({
+                    'ticker': ticker,
+                    'success': True,
+                    **data
+                })
+            
+            # Also try old method as fallback for missing stocks
+            if len(stock_data_list) < len(selected_stocks):
+                missing = set(selected_stocks) - {d['ticker'] for d in stock_data_list}
+                st.warning(f"⚠️ {len(missing)} stocks failed multi-provider, trying fallback...")
+                fallback_data = get_stocks_parallel(list(missing))
+                stock_data_list.extend(fallback_data)
+        else:
+            # Use original single-provider (Yahoo only)
+            st.info("📡 Using single-provider mode (Yahoo Finance only)")
+            stock_data_list = get_stocks_parallel(selected_stocks)
         
         # Convert list to dictionary for easier access
-        stock_data = {data['ticker']: data for data in stock_data_list}
+        stock_data = {data['ticker']: data for data in stock_data_list if data.get('success')}
         
-        st.success(f"✅ Fetched {len(stock_data)} stocks in parallel!")
+        st.success(f"✅ Fetched {len(stock_data)}/{len(selected_stocks)} stocks successfully!")
+        
+        # Show cache hit info for multi-provider
+        if use_multi:
+            cache_stats_after = get_cache_stats()
+            st.caption(f"💾 Cache efficiency: {cache_stats_after['total_files']} files total")
         
     
     # === ANALYSIS WITH ENHANCED FEATURES ===
@@ -908,80 +1014,80 @@ if 'analyze' in st.session_state and st.session_state.analyze:
         top3 = [r['ticker'] for r in successful_results[:3]]
         # Enhanced readable report with light theme
         st.markdown(f"""
-<div style='background: #FFFFFF; border: 2px solid #D71921; border-radius: 8px; padding: 3rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
-    <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
-        <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
-            📊 INVESTMENT ANALYSIS REPORT
-        </h2>
-        <p style='font-size: 1rem; font-weight: 400; margin-top: 0.8rem; color: #666666;'>
-            Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
-        </p>
-    </div>
-    <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;'>
-        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>TOP HOLDINGS</p>
-            <p style='font-size: 1.5rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0; color: #000000;'>
-                {', '.join(top3)}
-            </p>
-        </div>
-        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>EXPECTED ANNUAL RETURN</p>
-            <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
-                {total_return:.2f}%
-            </p>
-        </div>
-        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>RISK PROFILE</p>
-            <p style='font-size: 1.5rem; font-family: "Noto Sans", sans-serif; font-weight: 600; margin: 0; color: #000000;'>
-                {risk}
-            </p>
-        </div>
-        <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
-            <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>STOCKS ANALYZED</p>
-            <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
-                {len(successful_results)}
-            </p>
-        </div>
-    </div>
-    
-    <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
-        <h3 style='color: #000000; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem 0; letter-spacing: 0.05em; text-transform: uppercase;'>
-            ✓ RECOMMENDED ACTION PLAN
-        </h3>
-        <div style='display: grid; gap: 1.2rem;'>
-            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>1</span>
-                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                    <strong style='color: #000000; font-weight: 600;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
+        <div style='background: #FFFFFF; border: 2px solid #D71921; border-radius: 8px; padding: 3rem; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: "Noto Sans", "Ndot", sans-serif; margin: 2rem 0;'>
+            <div style='text-align: center; margin-bottom: 2.5rem; border-bottom: 2px solid #D71921; padding-bottom: 1.5rem;'>
+                <h2 style='font-family: "Ndot", sans-serif; font-size: 2.5rem; font-weight: 600; margin: 0; color: #000000; text-transform: uppercase; letter-spacing: 0.05em;'>
+                    📊 INVESTMENT ANALYSIS REPORT
+                        </h2>
+                <p style='font-size: 1rem; font-weight: 400; margin-top: 0.8rem; color: #666666;'>
+                    Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')} | Market Hours: NYSE/NASDAQ
                 </p>
             </div>
-            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>2</span>
-                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                    <strong style='color: #000000; font-weight: 600;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
-                </p>
+            <div style='display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2.5rem;'>
+                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>TOP HOLDINGS</p>
+                    <p style='font-size: 1.5rem; font-family: "LetteraMono", monospace; font-weight: 600; margin: 0; color: #000000;'>
+                        {', '.join(top3)}
+                    </p>
+                </div>
+                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>EXPECTED ANNUAL RETURN</p>
+                    <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
+                        {total_return:.2f}%
+                    </p>
+                </div>
+                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>RISK PROFILE</p>
+                    <p style='font-size: 1.5rem; font-family: "Noto Sans", sans-serif; font-weight: 600; margin: 0; color: #000000;'>
+                        {risk}
+                    </p>
+                </div>
+                <div style='background: #FAFAFA; padding: 2rem; border-radius: 8px; border: 1px solid #E0E0E0;'>
+                    <p style='color: #D71921; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; margin: 0 0 0.8rem 0; letter-spacing: 0.1em;'>STOCKS ANALYZED</p>
+                    <p style='font-size: 2.5rem; font-family: "LetteraMono", monospace; font-weight: 700; margin: 0; color: #000000;'>
+                        {len(successful_results)}
+                    </p>
+                </div>
             </div>
-            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>3</span>
-                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                    <strong style='color: #000000; font-weight: 600;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
-                </p>
+            
+            <div style='background: #F5F5F5; padding: 2.5rem; border-radius: 8px; border: 1px solid #D71921;'>
+                <h3 style='color: #000000; font-family: "Ndot", "Noto Sans", sans-serif; font-size: 1.4rem; font-weight: 600; margin: 0 0 1.5rem 0; letter-spacing: 0.05em; text-transform: uppercase;'>
+                    ✓ RECOMMENDED ACTION PLAN
+                </h3>
+                <div style='display: grid; gap: 1.2rem;'>
+                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>1</span>
+                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                            <strong style='color: #000000; font-weight: 600;'>Diversify Investments:</strong> Allocate funds according to the portfolio distribution chart above
+                        </p>
+                    </div>
+                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>2</span>
+                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                            <strong style='color: #000000; font-weight: 600;'>Set Stop-Loss Orders:</strong> Implement 15% stop-loss on each position to manage downside risk
+                        </p>
+                    </div>
+                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>3</span>
+                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                            <strong style='color: #000000; font-weight: 600;'>Monthly Rebalancing:</strong> Review and adjust portfolio monthly or when positions drift >10%
+                        </p>
+                    </div>
+                    <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
+                        <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>4</span>
+                        <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
+                            <strong style='color: #000000; font-weight: 600;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
+                        </p>
+                    </div>
+                </div>
             </div>
-            <div style='display: flex; align-items: start; gap: 1rem; background: #FFFFFF; padding: 1.2rem; border-radius: 6px; border-left: 4px solid #D71921;'>
-                <span style='color: #FFFFFF; background: #D71921; font-size: 1rem; font-weight: 700; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;'>4</span>
-                <p style='font-size: 1.05rem; line-height: 1.6; margin: 0; color: #333333;'>
-                    <strong style='color: #000000; font-weight: 600;'>Monitor Earnings:</strong> Track quarterly earnings reports and adjust positions accordingly
+            
+            <div style='margin-top: 2rem; padding: 1.5rem; background: #FFF9E6; border-radius: 8px; border: 1px solid #FFD700; text-align: center;'>
+                <p style='font-size: 1rem; line-height: 1.7; margin: 0; color: #333333;'>
+                    <strong style='color: #D71921; font-weight: 700;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
                 </p>
             </div>
         </div>
-    </div>
-    
-    <div style='margin-top: 2rem; padding: 1.5rem; background: #FFF9E6; border-radius: 8px; border: 1px solid #FFD700; text-align: center;'>
-        <p style='font-size: 1rem; line-height: 1.7; margin: 0; color: #333333;'>
-            <strong style='color: #D71921; font-weight: 700;'>⚠️ DISCLAIMER:</strong> Educational use only. Past performance does not guarantee future results. Consult a licensed financial advisor before investing.
-        </p>
-    </div>
-</div>
         """, unsafe_allow_html=True)
     
     # Reset button
