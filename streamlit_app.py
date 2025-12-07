@@ -79,6 +79,31 @@ except Exception:  # pragma: no cover
     def clear_multi_cache():
         return None
 
+# Import quantitative research engine
+try:
+    from quant_engine import (
+        FactorAnalysisEngine,
+        AnomalyDetector,
+        MarketSegmentation,
+        QuantitativeAdvisor
+    )
+    QUANT_ENGINE_AVAILABLE = True
+except Exception:  # pragma: no cover
+    QUANT_ENGINE_AVAILABLE = False
+    print("⚠️ Quantitative engine not available")
+
+# Import backtesting engine
+try:
+    from backtest_engine import (
+        BacktestEngine,
+        ConfidenceInterval,
+        generate_performance_report
+    )
+    BACKTEST_AVAILABLE = True
+except Exception:  # pragma: no cover
+    BACKTEST_AVAILABLE = False
+    print("⚠️ Backtesting engine not available")
+
 try:
     from news_sentiment import fetch_stock_news, calculate_overall_sentiment
 except Exception:  # pragma: no cover
@@ -166,7 +191,7 @@ def format_change(x: Any) -> str:
     return f"{sign}{f:.2f}%"
 
 
-@st.cache_data(ttl=86400)  # 24-hour cache
+@st.cache_data(ttl=3600)  # 1-hour cache for fresh prices
 def fetch_sequential(tickers: List[str], use_multi: bool = True, delay: float = 0.5) -> List[Dict[str, Any]]:
     """
     Fetch data with robust multi-tier fallback:
@@ -211,7 +236,7 @@ def fetch_sequential(tickers: List[str], use_multi: bool = True, delay: float = 
     
     # Use robust fallback system
     if LOCAL_DATA_AVAILABLE:
-        return get_prices_with_fallback(tickers, api_fetch_wrapper, max_cache_age_hours=24)
+        return get_prices_with_fallback(tickers, api_fetch_wrapper, max_cache_age_hours=1)
     else:
         # Legacy path without local data
         return api_fetch_wrapper(tickers)
@@ -926,6 +951,15 @@ def main() -> None:
 
         if enriched:
             render_top_cards(enriched)
+            
+            # Add Backtesting Section
+            if BACKTEST_AVAILABLE and len(enriched) >= 2:
+                render_backtest_section(tickers, amount)
+            
+            # Add Quantitative Insights Section
+            if QUANT_ENGINE_AVAILABLE and len(enriched) >= 3:
+                render_quant_insights(enriched, amount)
+            
             render_detailed(enriched)
             render_table(enriched)
             render_portfolio(enriched, amount, risk)
@@ -939,6 +973,345 @@ def main() -> None:
     footer()
 
 
+def render_backtest_section(tickers: List[str], capital: float):
+    """Render backtesting and validation section"""
+    st.markdown("## 🎯 Strategy Validation & Backtesting")
+    st.caption("Historical performance validation with risk-adjusted metrics")
+    
+    with st.expander("⚙️ Configure Backtest", expanded=False):
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            backtest_period = st.selectbox(
+                "Backtest Period",
+                ["6 Months", "1 Year", "2 Years", "3 Years", "5 Years"],
+                index=1
+            )
+        
+        with col2:
+            initial_capital_bt = st.number_input(
+                "Initial Capital ($)",
+                min_value=10000,
+                max_value=1000000,
+                value=int(capital),
+                step=10000
+            )
+        
+        with col3:
+            st.write("")  # Spacer
+            run_backtest = st.button("🚀 Run Backtest", type="primary")
+    
+    # Calculate date range
+    period_days = {
+        "6 Months": 180,
+        "1 Year": 365,
+        "2 Years": 730,
+        "3 Years": 1095,
+        "5 Years": 1825
+    }
+    
+    end_date = datetime.now()
+    start_date = end_date - timedelta(days=period_days[backtest_period])
+    
+    if run_backtest or st.session_state.get('backtest_results'):
+        with st.spinner(f"Running backtest for {backtest_period}..."):
+            # Run backtest
+            engine = BacktestEngine(initial_capital=initial_capital_bt)
+            results = engine.run_backtest(
+                tickers=tickers,
+                start_date=start_date.strftime('%Y-%m-%d'),
+                end_date=end_date.strftime('%Y-%m-%d')
+            )
+            
+            st.session_state['backtest_results'] = results
+    
+    # Display results
+    if st.session_state.get('backtest_results'):
+        results = st.session_state['backtest_results']
+        
+        if 'error' in results:
+            st.error(f"Backtest failed: {results['error']}")
+            return
+        
+        # Key Metrics
+        st.markdown("### 📊 Performance Summary")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            return_val = results['total_return']
+            st.metric(
+                "Total Return",
+                f"{return_val:+.2f}%",
+                help="Total portfolio return over backtest period"
+            )
+        
+        with col2:
+            sharpe = results['sharpe_ratio']
+            st.metric(
+                "Sharpe Ratio",
+                f"{sharpe:.2f}",
+                help="Risk-adjusted return (>1 is good, >2 is excellent)"
+            )
+        
+        with col3:
+            drawdown = results['max_drawdown']
+            st.metric(
+                "Max Drawdown",
+                f"{drawdown:.2f}%",
+                delta_color="inverse",
+                help="Largest peak-to-trough decline"
+            )
+        
+        with col4:
+            win_rate = results['win_rate']
+            st.metric(
+                "Win Rate",
+                f"{win_rate:.1f}%",
+                help="Percentage of profitable trades"
+            )
+        
+        # Benchmark Comparison
+        st.markdown("### 🏆 vs S&P 500 Benchmark")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        benchmark = results.get('benchmark', {})
+        alpha = return_val - benchmark.get('return', 0)
+        
+        with col1:
+            st.metric(
+                "Strategy Return",
+                f"{return_val:+.2f}%",
+                f"{alpha:+.2f}% vs SPY"
+            )
+        
+        with col2:
+            st.metric(
+                "SPY Return",
+                f"{benchmark.get('return', 0):+.2f}%"
+            )
+        
+        with col3:
+            outperformance = "✅ OUTPERFORMED" if alpha > 0 else "⚠️ UNDERPERFORMED"
+            st.metric("Performance", outperformance)
+        
+        # Performance Chart
+        if results.get('daily_values') and results.get('dates'):
+            st.markdown("### 📈 Equity Curve")
+            
+            import plotly.graph_objects as go
+            
+            fig = go.Figure()
+            
+            # Strategy line
+            fig.add_trace(go.Scatter(
+                x=results['dates'],
+                y=results['daily_values'],
+                name='Strategy',
+                line=dict(color='#D71921', width=2)
+            ))
+            
+            # Initial capital reference line
+            fig.add_hline(
+                y=initial_capital_bt,
+                line_dash="dash",
+                line_color="gray",
+                annotation_text="Initial Capital"
+            )
+            
+            fig.update_layout(
+                title=f"Portfolio Value Over Time ({backtest_period})",
+                xaxis_title="Date",
+                yaxis_title="Portfolio Value ($)",
+                hovermode='x unified',
+                height=400
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+        
+        # Trading Stats
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("### 📊 Trading Statistics")
+            st.write(f"**Total Trades:** {results['total_trades']}")
+            st.write(f"**Winning Trades:** {results['winning_trades']} ({results['win_rate']:.1f}%)")
+            st.write(f"**Losing Trades:** {results['losing_trades']}")
+            st.write(f"**Average Win:** +{results['avg_win']:.2f}%")
+            st.write(f"**Average Loss:** {results['avg_loss']:.2f}%")
+        
+        with col2:
+            st.markdown("### 📉 Risk Metrics")
+            st.write(f"**Volatility:** {results['annual_volatility']:.2f}%")
+            st.write(f"**Sharpe Ratio:** {results['sharpe_ratio']:.2f}")
+            st.write(f"**Max Drawdown:** {results['max_drawdown']:.2f}%")
+            st.write(f"**Final Value:** ${results['final_value']:,.2f}")
+        
+        # Disclaimer
+        st.info("""
+        ⚠️ **Backtest Disclaimer:** Past performance is not indicative of future results. 
+        Backtests assume perfect execution, no slippage, and may not reflect real-world trading conditions.
+        This is for educational purposes only and not financial advice.
+        """)
+
+
+
+def render_quant_insights(successful: List[Dict[str, Any]], total_capital: float):
+    """Render quantitative research insights"""
+    st.markdown("## 🧬 Quantitative Research Insights")
+    st.caption("Statistical analysis powered by factor analysis, anomaly detection, and market segmentation")
+    
+    # Convert to DataFrame
+    df = pd.DataFrame(successful)
+    
+    # Initialize quant advisor
+    advisor = QuantitativeAdvisor(df)
+    
+    # Create tabs for different analyses
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Factor Analysis", "💎 Opportunities & Risks", "🎯 Market Segments", "📈 Portfolio Strategy"])
+    
+    with tab1:
+        st.markdown("### Key Performance Factors")
+        st.caption("Statistical analysis of which metrics actually predict stock performance")
+        
+        significant = advisor.factor_engine.get_significant_factors()
+        red_herrings = advisor.factor_engine.get_red_herrings()
+        
+        if significant:
+            st.markdown("#### ✅ Statistically Significant Factors")
+            for i, factor in enumerate(significant, 1):
+                col1, col2, col3 = st.columns([2, 1, 1])
+                with col1:
+                    st.markdown(f"**{i}. {factor['factor']}**")
+                with col2:
+                    st.metric("Effect Size", factor['strength'])
+                with col3:
+                    st.metric("P-value", f"{factor['p_value']:.4f}")
+                
+                st.caption(f"Correlation: {factor['correlation']:.3f} | This factor has {factor['strength'].lower()} predictive power")
+                st.markdown("---")
+        
+        if red_herrings:
+            st.markdown("#### ⚠️ Red Herrings (Not Statistically Significant)")
+            st.caption("These factors seem important but don't actually predict performance")
+            for factor in red_herrings[:2]:
+                st.write(f"• **{factor['factor']}**: p={factor['p_value']:.3f} (correlation: {factor['correlation']:.3f})")
+    
+    with tab2:
+        st.markdown("### Hidden Gems & Red Flags")
+        st.caption("Anomaly detection using Isolation Forest algorithm")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("#### 💎 Hidden Gems")
+            st.caption("Undervalued opportunities the market may be missing")
+            gems = advisor.anomaly_detector.get_hidden_gems()
+            
+            if not gems.empty:
+                for _, gem in gems.head(3).iterrows():
+                    st.markdown(
+                        f"""
+                        <div class='card' style='background:#e8f5e9;border-color:#4caf50;'>
+                            <strong>{gem['ticker']} - {gem.get('name', '')}</strong>
+                            <p>Score: {gem['score']:.1f}/10 | Anomaly: {gem['anomaly_score']:.2f}</p>
+                            <p style='color:#2e7d32;font-size:0.85rem;'>
+                                ✓ Strong fundamentals with low recognition
+                            </p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.info("No hidden gems detected in current selection")
+        
+        with col2:
+            st.markdown("#### 🚩 Red Flags")
+            st.caption("Warning signals requiring attention")
+            flags = advisor.anomaly_detector.get_red_flags()
+            
+            if not flags.empty:
+                for _, flag in flags.head(3).iterrows():
+                    st.markdown(
+                        f"""
+                        <div class='card' style='background:#ffebee;border-color:#f44336;'>
+                            <strong>{flag['ticker']} - {flag.get('name', '')}</strong>
+                            <p>Score: {flag['score']:.1f}/10 | Anomaly: {flag['anomaly_score']:.2f}</p>
+                            <p style='color:#c62828;font-size:0.85rem;'>
+                                ⚠ Unusual patterns detected - review recommended
+                            </p>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+            else:
+                st.success("No red flags detected in current selection")
+    
+    with tab3:
+        st.markdown("### Market Segmentation")
+        st.caption("Stocks clustered by risk/reward profile using K-Means")
+        
+        clusters = advisor.segmentation.perform_clustering()
+        
+        if not clusters.empty:
+            # Show distribution
+            cluster_counts = clusters['cluster_name'].value_counts()
+            
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.markdown("#### Cluster Distribution")
+                for cluster_name, count in cluster_counts.items():
+                    st.metric(cluster_name, f"{count} stocks")
+            
+            with col2:
+                st.markdown("#### Stocks by Segment")
+                for cluster_name in cluster_counts.index:
+                    with st.expander(f"{cluster_name} ({cluster_counts[cluster_name]} stocks)"):
+                        cluster_stocks = clusters[clusters['cluster_name'] == cluster_name][['ticker', 'name', 'score', 'change']]
+                        st.dataframe(cluster_stocks, hide_index=True, use_container_width=True)
+        else:
+            st.info("Insufficient data for clustering analysis")
+    
+    with tab4:
+        st.markdown("### Portfolio Allocation Strategy")
+        st.caption("Diversification recommendations based on quantitative analysis")
+        
+        recommendations = advisor.get_portfolio_recommendations(total_capital)
+        
+        # Show allocation
+        allocations = recommendations.get('cluster_allocations', {})
+        if allocations:
+            st.markdown("#### Recommended Capital Allocation")
+            
+            for cluster_name, amount in allocations.items():
+                percentage = (amount / total_capital) * 100
+                st.metric(
+                    cluster_name,
+                    f"${amount:,.0f}",
+                    f"{percentage:.1f}%"
+                )
+        
+        # Market insights
+        insights = recommendations.get('market_insights', '')
+        if insights:
+            st.markdown("#### Market Insights")
+            st.code(insights, language="text")
+        
+        # Summary stats
+        if recommendations.get('key_factors'):
+            st.markdown("#### Key Takeaways")
+            st.success(f"✓ Analysis based on {len(df)} stocks with {len(recommendations['key_factors'])} significant factors")
+            
+            if recommendations.get('hidden_gems'):
+                st.info(f"💎 {len(recommendations['hidden_gems'])} hidden gems identified")
+            
+            if recommendations.get('red_flags'):
+                st.warning(f"🚩 {len(recommendations['red_flags'])} red flags detected")
+
+
 if __name__ == "__main__":
     main()
+
 
